@@ -351,6 +351,40 @@ def main():
             # else:
             #     best_model = False
 
+            # ==================== ADDED: Write validation metrics to TensorBoard ====================
+            writer = writer_dict['writer']
+            global_steps = writer_dict['valid_global_steps']
+            
+            # Write validation loss
+            writer.add_scalar('valid/total_loss', total_loss, global_steps)
+            
+            # Write driving area segmentation metrics
+            writer.add_scalar('valid/da_seg_acc', da_segment_results[0], global_steps)
+            writer.add_scalar('valid/da_seg_iou', da_segment_results[1], global_steps)
+            writer.add_scalar('valid/da_seg_miou', da_segment_results[2], global_steps)
+            
+            # Write lane line segmentation metrics
+            writer.add_scalar('valid/ll_seg_acc', ll_segment_results[0], global_steps)
+            writer.add_scalar('valid/ll_seg_iou', ll_segment_results[1], global_steps)
+            writer.add_scalar('valid/ll_seg_miou', ll_segment_results[2], global_steps)
+            
+            # Write detection metrics
+            writer.add_scalar('valid/detect_precision', detect_results[0], global_steps)
+            writer.add_scalar('valid/detect_recall', detect_results[1], global_steps)
+            writer.add_scalar('valid/detect_mAP@0.5', detect_results[2], global_steps)
+            writer.add_scalar('valid/detect_mAP@0.5:0.95', detect_results[3], global_steps)
+            
+            # Write fitness score
+            writer.add_scalar('valid/fitness', fi, global_steps)
+            
+            # Write inference times
+            writer.add_scalar('valid/inference_time', times[0], global_steps)
+            writer.add_scalar('valid/nms_time', times[1], global_steps)
+            
+            # Update global steps counter for validation
+            writer_dict['valid_global_steps'] = global_steps + 1
+            # ==================== END OF ADDED CODE ====================
+
         # save checkpoint model and best model
         if rank in [-1, 0]:
             savepath = os.path.join(final_output_dir, f'epoch-{epoch}.pth')

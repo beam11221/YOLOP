@@ -4,7 +4,7 @@ from yacs.config import CfgNode as CN
 
 _C = CN()
 
-_C.LOG_DIR = 'runs/'
+_C.LOG_DIR = 'runs/client_3'
 _C.GPUS = (0,1)     
 _C.WORKERS = 8
 _C.PIN_MEMORY = False
@@ -50,10 +50,10 @@ _C.LOSS.LL_IOU_GAIN = 0.2 # lane line iou loss gain
 
 # DATASET related params
 _C.DATASET = CN(new_allowed=True)
-_C.DATASET.DATAROOT = '/home/zwt/bdd/bdd100k/images/100k'       # the path of images folder
-_C.DATASET.LABELROOT = '/home/zwt/bdd/bdd100k/labels/100k'      # the path of det_annotations folder
-_C.DATASET.MASKROOT = '/home/zwt/bdd/bdd_seg_gt'                # the path of da_seg_annotations folder
-_C.DATASET.LANEROOT = '/home/zwt/bdd/bdd_lane_gt'               # the path of ll_seg_annotations folder
+_C.DATASET.DATAROOT = '/workspace/dbb100k_yolop_split/client_3/images'       # the path of images folder
+_C.DATASET.LABELROOT = '/workspace/dbb100k_yolop_split/client_3/det_annotations'      # the path of det_annotations folder
+_C.DATASET.MASKROOT = '/workspace/dbb100k_yolop_split/client_3/da_seg_annotations'                # the path of da_seg_annotations folder
+_C.DATASET.LANEROOT = '/workspace/dbb100k_yolop_split/client_3/ll_seg_annotations'               # the path of ll_seg_annotations folder
 _C.DATASET.DATASET = 'BddDataset'
 _C.DATASET.TRAIN_SET = 'train'
 _C.DATASET.TEST_SET = 'val'
