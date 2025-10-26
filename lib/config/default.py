@@ -4,6 +4,31 @@ from yacs.config import CfgNode as CN
 
 _C = CN()
 
+# for FedAVG
+_C.FED.CLIENT_IDS = ['client_1', 'client_2', 'client_3']
+_C.FED.EPOCHS = 50
+_C.FED.DATAROOT = {
+    'client_1': '/workspace/dbb100k_yolop_split/client_1/images',
+    'client_2': '/workspace/dbb100k_yolop_split/client_2/images',
+    'client_3': '/workspace/dbb100k_yolop_split/client_3/images'
+}
+_C.FED.LABELROOT = {
+    'client_1': '/workspace/dbb100k_yolop_split/client_1/det_annotations',
+    'client_2': '/workspace/dbb100k_yolop_split/client_2/det_annotations',
+    'client_3': '/workspace/dbb100k_yolop_split/client_3/det_annotations'
+}
+_C.FED.MASKROOT = {
+    'client_1': '/workspace/dbb100k_yolop_split/client_1/da_seg_annotations',
+    'client_2': '/workspace/dbb100k_yolop_split/client_2/da_seg_annotations',
+    'client_3': '/workspace/dbb100k_yolop_split/client_3/da_seg_annotations'
+}
+_C.FED.LANEROOT = {
+    'client_1': '/workspace/dbb100k_yolop_split/client_1/ll_seg_annotations',
+    'client_2': '/workspace/dbb100k_yolop_split/client_2/ll_seg_annotations',
+    'client_3': '/workspace/dbb100k_yolop_split/client_3/ll_seg_annotations'
+}
+
+
 _C.LOG_DIR = 'runs/client_3'
 _C.GPUS = (0,1)     
 _C.WORKERS = 8
