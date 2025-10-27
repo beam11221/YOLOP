@@ -6,7 +6,7 @@ _C = CN()
 
 # for FedAVG
 _C.FED.CLIENT_IDS = ['client_1', 'client_2', 'client_3']
-_C.FED.EPOCHS = 50
+_C.FED.EPOCHS = 3
 _C.FED.DATAROOT = {
     'client_1': '/workspace/dbb100k_yolop_split/client_1/images',
     'client_2': '/workspace/dbb100k_yolop_split/client_2/images',
@@ -115,7 +115,7 @@ _C.TRAIN.GAMMA1 = 0.99
 _C.TRAIN.GAMMA2 = 0.0
 
 _C.TRAIN.BEGIN_EPOCH = 0
-_C.TRAIN.END_EPOCH = 240
+_C.TRAIN.END_EPOCH = 2
 
 _C.TRAIN.VAL_FREQ = 1
 _C.TRAIN.BATCH_SIZE_PER_GPU =24
