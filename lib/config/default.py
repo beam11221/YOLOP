@@ -5,28 +5,55 @@ from yacs.config import CfgNode as CN
 _C = CN()
 
 # for FedAVG
-_C.FED.CLIENT_IDS = ['client_1', 'client_2', 'client_3']
+_C.FED = CN(new_allowed=True)
+# _C.FED.CLIENT_IDS = ['client_1', 'client_2', 'client_3']
+_C.FED.CLIENT_IDS = ['client_1']
 _C.FED.EPOCHS = 3
-_C.FED.DATAROOT = {
-    'client_1': '/workspace/dbb100k_yolop_split/client_1/images',
-    'client_2': '/workspace/dbb100k_yolop_split/client_2/images',
-    'client_3': '/workspace/dbb100k_yolop_split/client_3/images'
-}
-_C.FED.LABELROOT = {
-    'client_1': '/workspace/dbb100k_yolop_split/client_1/det_annotations',
-    'client_2': '/workspace/dbb100k_yolop_split/client_2/det_annotations',
-    'client_3': '/workspace/dbb100k_yolop_split/client_3/det_annotations'
-}
-_C.FED.MASKROOT = {
-    'client_1': '/workspace/dbb100k_yolop_split/client_1/da_seg_annotations',
-    'client_2': '/workspace/dbb100k_yolop_split/client_2/da_seg_annotations',
-    'client_3': '/workspace/dbb100k_yolop_split/client_3/da_seg_annotations'
-}
-_C.FED.LANEROOT = {
-    'client_1': '/workspace/dbb100k_yolop_split/client_1/ll_seg_annotations',
-    'client_2': '/workspace/dbb100k_yolop_split/client_2/ll_seg_annotations',
-    'client_3': '/workspace/dbb100k_yolop_split/client_3/ll_seg_annotations'
-}
+
+# Convert dict to CfgNode for DATAROOT
+_C.FED.DATAROOT = CN()
+_C.FED.DATAROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/images'
+_C.FED.DATAROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/images'
+_C.FED.DATAROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/images'
+
+# Convert dict to CfgNode for LABELROOT
+_C.FED.LABELROOT = CN()
+_C.FED.LABELROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/det_annotations'
+_C.FED.LABELROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/det_annotations'
+_C.FED.LABELROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/det_annotations'
+
+# Convert dict to CfgNode for MASKROOT
+_C.FED.MASKROOT = CN()
+_C.FED.MASKROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/da_seg_annotations'
+_C.FED.MASKROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/da_seg_annotations'
+_C.FED.MASKROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/da_seg_annotations'
+
+# Convert dict to CfgNode for LANEROOT
+_C.FED.LANEROOT = CN()
+_C.FED.LANEROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/ll_seg_annotations'
+_C.FED.LANEROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/ll_seg_annotations'
+_C.FED.LANEROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/ll_seg_annotations'
+
+# _C.FED.DATAROOT = {
+#     'client_1': '/workspace/dbb100k_yolop_split/client_1/images',
+#     'client_2': '/workspace/dbb100k_yolop_split/client_2/images',
+#     'client_3': '/workspace/dbb100k_yolop_split/client_3/images'
+# }
+# _C.FED.LABELROOT = {
+#     'client_1': '/workspace/dbb100k_yolop_split/client_1/det_annotations',
+#     'client_2': '/workspace/dbb100k_yolop_split/client_2/det_annotations',
+#     'client_3': '/workspace/dbb100k_yolop_split/client_3/det_annotations'
+# }
+# _C.FED.MASKROOT = {
+#     'client_1': '/workspace/dbb100k_yolop_split/client_1/da_seg_annotations',
+#     'client_2': '/workspace/dbb100k_yolop_split/client_2/da_seg_annotations',
+#     'client_3': '/workspace/dbb100k_yolop_split/client_3/da_seg_annotations'
+# }
+# _C.FED.LANEROOT = {
+#     'client_1': '/workspace/dbb100k_yolop_split/client_1/ll_seg_annotations',
+#     'client_2': '/workspace/dbb100k_yolop_split/client_2/ll_seg_annotations',
+#     'client_3': '/workspace/dbb100k_yolop_split/client_3/ll_seg_annotations'
+# }
 
 
 _C.LOG_DIR = 'runs/client_3'
@@ -80,7 +107,8 @@ _C.DATASET.LABELROOT = '/workspace/dbb100k_yolop_split/client_3/det_annotations'
 _C.DATASET.MASKROOT = '/workspace/dbb100k_yolop_split/client_3/da_seg_annotations'                # the path of da_seg_annotations folder
 _C.DATASET.LANEROOT = '/workspace/dbb100k_yolop_split/client_3/ll_seg_annotations'               # the path of ll_seg_annotations folder
 _C.DATASET.DATASET = 'BddDataset'
-_C.DATASET.TRAIN_SET = 'train'
+# _C.DATASET.TRAIN_SET = 'train'
+_C.DATASET.TRAIN_SET = 'val'
 _C.DATASET.TEST_SET = 'val'
 _C.DATASET.DATA_FORMAT = 'jpg'
 _C.DATASET.SELECT_DATA = False

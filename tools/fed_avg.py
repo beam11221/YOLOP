@@ -11,8 +11,10 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
-from lib.utils import DataLoaderX
 
+from tensorboardX import SummaryWriter
+
+from lib.utils import DataLoaderX
 import lib.dataset as dataset
 from lib.config import cfg
 from lib.config import update_config
@@ -113,7 +115,7 @@ def fedavg(global_model, client_state_dicts):
     return global_model
 
 
-def train_client_model(global_model, fed_round, data_loader, cfg, logger, device):
+def train_client_model(global_model, fed_round, data_loader, cfg, logger, writer_dict, device):
     """
     Train a client model for local epochs
     Returns state_dict on CPU to save GPU memory
@@ -153,7 +155,7 @@ def train_client_model(global_model, fed_round, data_loader, cfg, logger, device
     scaler = amp.GradScaler(enabled=device.type != 'cpu')
     
     logger.info(f'=> Start local training for {cfg.TRAIN.END_EPOCH - begin_epoch} epochs...')
-    
+
     # ✅ Train for ALL local epochs
     for local_epoch in range(begin_epoch + 1, cfg.TRAIN.END_EPOCH + 1):
         if rank != -1:
@@ -161,7 +163,7 @@ def train_client_model(global_model, fed_round, data_loader, cfg, logger, device
         
         # Train for one epoch
         train(cfg, train_loader, client_model, criterion, optimizer, scaler,
-              local_epoch, num_batch, num_warmup, None, logger, device, rank)
+              local_epoch, num_batch, num_warmup, writer_dict, logger, device, rank)
         
         lr_scheduler.step()
     
@@ -204,6 +206,15 @@ def main():
         for client_id in cfg.FED.CLIENT_IDS
     }
 
+    logger, final_output_dir, tb_log_dir = create_logger(
+        cfg, cfg.LOG_DIR, 'train', rank=rank)
+
+    writer_dict = {
+        'writer': SummaryWriter(log_dir=tb_log_dir),
+        'train_global_steps': 0,
+        'valid_global_steps': 0,
+    }
+
     # Federated Learning Loop
     for fed_round in range(1, cfg.FED.EPOCHS + 1):
         logger.info(f"\n{'='*60}")
@@ -220,7 +231,7 @@ def main():
             # Train and get state_dict (on CPU)
             state_dict = train_client_model(
                 global_model, fed_round, data_loaders[client_id], 
-                cfg, logger, device
+                cfg, logger, writer_dict, device
             )
             
             client_state_dicts.append(state_dict)
