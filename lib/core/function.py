@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 
 def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_batch, num_warmup,
-          writer_dict, logger, device, rank=-1):
+          writer_dict, logger, device, rank=-1, client_id="id_1"):
     """
     train for one epoch
 
@@ -52,7 +52,6 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
         intermediate = time.time()
         #print('tims:{}'.format(intermediate-start))
         num_iter = i + num_batch * (epoch - 1)
-
         if num_iter < num_warmup:
             # warm up
             lf = lambda x: ((1 + math.cos(x * math.pi / cfg.TRAIN.END_EPOCH)) / 2) * \
@@ -106,10 +105,15 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
                 logger.info(msg)
 
                 writer = writer_dict['writer']
-                global_steps = writer_dict['train_global_steps']
-                writer.add_scalar('train_loss', losses.val, global_steps)
+                global_steps = writer_dict['valid_global_steps']
+                
+                # writer.add_scalar(f"{client_id}_round{global_steps}/train_loss", losses.val, epoch)
+                writer.add_scalar(f"clients/{client_id}/round_{global_steps}/train_loss", losses.val, epoch)
+
+
+                # writer.add_scalar('train_loss', losses.val, global_steps)
                 # writer.add_scalar('train_acc', acc.val, global_steps)
-                writer_dict['train_global_steps'] = global_steps + 1
+                # writer_dict['train_global_steps'] = global_steps + 1
 
 
 def validate(epoch,config, val_loader, val_dataset, model, criterion, output_dir,

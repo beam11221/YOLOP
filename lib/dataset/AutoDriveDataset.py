@@ -43,7 +43,6 @@ class AutoDriveDataset(Dataset):
             mask_root = Path(cfg.FED.MASKROOT[client_id])
             lane_root = Path(cfg.FED.LANEROOT[client_id])
 
-
         if is_train:
             indicator = cfg.DATASET.TRAIN_SET
         else:
