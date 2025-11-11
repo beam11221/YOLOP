@@ -3,7 +3,7 @@ import os, sys
 import math
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
-
+import numpy as np
 import torch
 import torch.nn.parallel
 from torch.cuda import amp
@@ -14,16 +14,20 @@ import torchvision.transforms as transforms
 
 from tensorboardX import SummaryWriter
 
-from lib.utils import DataLoaderX
+from lib.utils import DataLoaderX, torch_distributed_zero_first
 import lib.dataset as dataset
 from lib.config import cfg
 from lib.config import update_config
 from lib.core.loss import get_loss
 from lib.core.function import train
+from lib.core.function import validate
+from lib.core.general import fitness
 from lib.models import get_net
 from lib.utils import is_parallel
 from lib.utils.utils import get_optimizer
-from lib.utils.utils import create_logger
+from lib.utils.utils import save_checkpoint
+from lib.utils.utils import create_logger, select_device
+from lib.utils import run_anchor
 
 
 def parse_args():
@@ -88,7 +92,7 @@ def create_data_generator(client_id, rank):
         collate_fn=dataset.AutoDriveDataset.collate_fn
     )
     
-    return {"train": train_loader, "valid": valid_loader}
+    return {"train": train_loader, "valid": valid_loader, "valid_dataset": valid_dataset}
 
 
 def fedavg(global_model, client_state_dicts):
@@ -112,10 +116,14 @@ def fedavg(global_model, client_state_dicts):
     # Load averaged parameters back to global model
     global_model.load_state_dict(global_dict)
     
+    # Model configuration
+    global_model.gr = 1.0
+    global_model.nc = 1
+    
     return global_model
 
 
-def train_client_model(global_model, fed_round, data_loader, cfg, logger, writer_dict, device):
+def train_client_model(global_model, fed_round, data_loader, cfg, logger, writer_dict, device, client_id):
     """
     Train a client model for local epochs
     Returns state_dict on CPU to save GPU memory
@@ -143,15 +151,15 @@ def train_client_model(global_model, fed_round, data_loader, cfg, logger, writer
     client_model.nc = 1
 
     if rank in [-1, 0]:
-        logger.info("Anchors loaded successfully")
         det = client_model.module.model[client_model.module.detector_index] if is_parallel(client_model) \
             else client_model.model[client_model.detector_index]
-        logger.info(str(det.anchors))
 
     # Training setup
     train_loader = data_loader["train"]
     num_batch = len(train_loader)
-    num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 1000)
+    # num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 1000)
+    num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 5)
+    print("SELECT WARMUP: ", num_warmup, num_batch)
     scaler = amp.GradScaler(enabled=device.type != 'cpu')
     
     logger.info(f'=> Start local training for {cfg.TRAIN.END_EPOCH - begin_epoch} epochs...')
@@ -163,7 +171,7 @@ def train_client_model(global_model, fed_round, data_loader, cfg, logger, writer
         
         # Train for one epoch
         train(cfg, train_loader, client_model, criterion, optimizer, scaler,
-              local_epoch, num_batch, num_warmup, writer_dict, logger, device, rank)
+              local_epoch, num_batch, num_warmup, writer_dict, logger, device, rank, client_id)
         
         lr_scheduler.step()
     
@@ -177,7 +185,7 @@ def train_client_model(global_model, fed_round, data_loader, cfg, logger, writer
     
     logger.info(f"Local training complete. Model moved to CPU, GPU memory freed.")
     
-    return state_dict  # Returns state_dict on CPU
+    return state_dict
 
 
 def main():
@@ -205,6 +213,7 @@ def main():
         client_id: create_data_generator(client_id, rank) 
         for client_id in cfg.FED.CLIENT_IDS
     }
+    data_loaders["global_model"] = create_data_generator("global_model", rank)
 
     logger, final_output_dir, tb_log_dir = create_logger(
         cfg, cfg.LOG_DIR, 'train', rank=rank)
@@ -231,8 +240,9 @@ def main():
             # Train and get state_dict (on CPU)
             state_dict = train_client_model(
                 global_model, fed_round, data_loaders[client_id], 
-                cfg, logger, writer_dict, device
+                cfg, logger, writer_dict, device, client_id
             )
+            criterion = get_loss(cfg, device=device)
             
             client_state_dicts.append(state_dict)
             torch.cuda.empty_cache()
@@ -254,6 +264,64 @@ def main():
         logger.info(f"Checkpoint saved: {save_path}")
         
         logger.info(f"Round {fed_round} complete!\n")
+
+        # Evaluate model on valid dataset
+        logger.info(f"Start evaluation...")
+        global_model.to("cuda")
+        da_segment_results,ll_segment_results,detect_results, total_loss,maps, times = validate(
+                fed_round,cfg, data_loaders["global_model"]["valid"], data_loaders["global_model"]["valid_dataset"], global_model, criterion,
+                final_output_dir, tb_log_dir, writer_dict,
+                logger, device, rank
+            )
+        fi = fitness(np.array(detect_results).reshape(1, -1))
+
+        msg = 'Epoch: [{0}]    Loss({loss:.3f})\n' \
+                    'Driving area Segment: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
+                    'Lane line Segment: Acc({ll_seg_acc:.3f})    IOU ({ll_seg_iou:.3f})  mIOU({ll_seg_miou:.3f})\n' \
+                    'Detect: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n'\
+                    'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
+                        fed_round,  loss=total_loss, da_seg_acc=da_segment_results[0],da_seg_iou=da_segment_results[1],da_seg_miou=da_segment_results[2],
+                        ll_seg_acc=ll_segment_results[0],ll_seg_iou=ll_segment_results[1],ll_seg_miou=ll_segment_results[2],
+                        p=detect_results[0],r=detect_results[1],map50=detect_results[2],map=detect_results[3],
+                        t_inf=times[0], t_nms=times[1])
+        logger.info(msg)
+
+        # ==================== ADDED: Write validation metrics to TensorBoard ====================
+        writer = writer_dict['writer']
+        global_steps = writer_dict['valid_global_steps']
+        
+        # Write validation loss
+        writer.add_scalar('global_model/total_loss', total_loss, global_steps)
+        
+        # Write driving area segmentation metrics
+        writer.add_scalar('global_model/da_seg_acc', da_segment_results[0], global_steps)
+        writer.add_scalar('global_model/da_seg_iou', da_segment_results[1], global_steps)
+        writer.add_scalar('global_model/da_seg_miou', da_segment_results[2], global_steps)
+        
+        # Write lane line segmentation metrics
+        writer.add_scalar('global_model/ll_seg_acc', ll_segment_results[0], global_steps)
+        writer.add_scalar('global_model/ll_seg_iou', ll_segment_results[1], global_steps)
+        writer.add_scalar('global_model/ll_seg_miou', ll_segment_results[2], global_steps)
+        
+        # Write detection metrics
+        writer.add_scalar('global_model/detect_precision', detect_results[0], global_steps)
+        writer.add_scalar('global_model/detect_recall', detect_results[1], global_steps)
+        writer.add_scalar('global_model/detect_mAP@0.5', detect_results[2], global_steps)
+        writer.add_scalar('global_model/detect_mAP@0.5:0.95', detect_results[3], global_steps)
+        
+        # Write fitness score
+        writer.add_scalar('global_model/fitness', fi, global_steps)
+        
+        # Write inference times
+        writer.add_scalar('global_model/inference_time', times[0], global_steps)
+        writer.add_scalar('global_model/nms_time', times[1], global_steps)
+        
+        # Update global steps counter for validation
+        writer_dict['valid_global_steps'] = global_steps + 1
+        # ==================== END OF ADDED CODE ====================
+
+        global_model.to("cpu")
+        del criterion
     
     # Save final model
     final_path = os.path.join(final_output_dir, 'final_global_model.pth')
