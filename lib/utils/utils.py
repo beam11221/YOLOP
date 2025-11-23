@@ -113,6 +113,9 @@ def save_checkpoint(epoch, name, model, optimizer, output_dir, filename, is_best
     if is_best and 'state_dict' in checkpoint:
         torch.save(checkpoint['best_state_dict'],
                    os.path.join(output_dir, 'model_best.pth'))
+        
+def save_state_dict(model, output_dir, filename):
+    torch.save(model.state_dict(), os.path.join(output_dir, filename))
 
 
 def initialize_weights(model):

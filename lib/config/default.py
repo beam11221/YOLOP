@@ -4,9 +4,71 @@ from yacs.config import CfgNode as CN
 
 _C = CN()
 
+# for FedAVG
+_C.FED = CN(new_allowed=True)
+_C.FED.CLIENT_IDS = ['client_1', 'client_2', 'client_3', 'client_4', 'client_5', 
+                     'client_6', 'client_7', 'client_8', 'client_9', 'client_10',
+                     'client_11', 'client_12', 'client_13', 'client_14', 'client_15'
+                     ]
+_C.FED.EPOCHS = 50
+
+# Base paths
+BASE_GLOBAL_PATH = '/workspace/dbb100k_yolop'
+BASE_CLIENT_PATH = '/workspace/dbb100k_yolop_split_15clients'
+
+# Define subdirectories for each root type
+ROOT_SUBDIRS = {
+    'DATAROOT': 'images',
+    'LABELROOT': 'det_annotations',
+    'MASKROOT': 'da_seg_annotations',
+    'LANEROOT': 'll_seg_annotations'
+}
+
+# Dynamically create paths for each root type
+for root_name, subdir in ROOT_SUBDIRS.items():
+    root_node = CN()
+    
+    # Global model path
+    root_node.global_model = os.path.join(BASE_GLOBAL_PATH, subdir)
+    
+    # Client paths
+    for client_id in _C.FED.CLIENT_IDS:
+        root_node[client_id] = os.path.join(BASE_CLIENT_PATH, client_id, subdir)
+    
+    # Assign to config
+    setattr(_C.FED, root_name, root_node)
+
+# # Convert dict to CfgNode for DATAROOT
+# _C.FED.DATAROOT = CN()
+# _C.FED.DATAROOT.global_model = '/workspace/dbb100k_yolop/images'
+# _C.FED.DATAROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/images'
+# _C.FED.DATAROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/images'
+# _C.FED.DATAROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/images'
+
+# # Convert dict to CfgNode for LABELROOT
+# _C.FED.LABELROOT = CN()
+# _C.FED.LABELROOT.global_model = '/workspace/dbb100k_yolop/det_annotations'
+# _C.FED.LABELROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/det_annotations'
+# _C.FED.LABELROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/det_annotations'
+# _C.FED.LABELROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/det_annotations'
+
+# # Convert dict to CfgNode for MASKROOT
+# _C.FED.MASKROOT = CN()
+# _C.FED.MASKROOT.global_model = '/workspace/dbb100k_yolop/da_seg_annotations'
+# _C.FED.MASKROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/da_seg_annotations'
+# _C.FED.MASKROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/da_seg_annotations'
+# _C.FED.MASKROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/da_seg_annotations'
+
+# # Convert dict to CfgNode for LANEROOT
+# _C.FED.LANEROOT = CN()
+# _C.FED.LANEROOT.global_model = '/workspace/dbb100k_yolop/ll_seg_annotations'
+# _C.FED.LANEROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/ll_seg_annotations'
+# _C.FED.LANEROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/ll_seg_annotations'
+# _C.FED.LANEROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/ll_seg_annotations'
+
 _C.LOG_DIR = 'runs/client_3'
 _C.GPUS = (0,1)     
-_C.WORKERS = 8
+_C.WORKERS = 16
 _C.PIN_MEMORY = False
 _C.PRINT_FREQ = 20
 _C.AUTO_RESUME =False       # Resume from the last training interrupt
@@ -56,6 +118,7 @@ _C.DATASET.MASKROOT = '/workspace/dbb100k_yolop_split/client_3/da_seg_annotation
 _C.DATASET.LANEROOT = '/workspace/dbb100k_yolop_split/client_3/ll_seg_annotations'               # the path of ll_seg_annotations folder
 _C.DATASET.DATASET = 'BddDataset'
 _C.DATASET.TRAIN_SET = 'train'
+# _C.DATASET.TRAIN_SET = 'val'
 _C.DATASET.TEST_SET = 'val'
 _C.DATASET.DATA_FORMAT = 'jpg'
 _C.DATASET.SELECT_DATA = False
@@ -78,7 +141,7 @@ _C.DATASET.HSV_V = 0.4  # image HSV-Value augmentation (fraction)
 _C.TRAIN = CN(new_allowed=True)
 _C.TRAIN.LR0 = 0.001  # initial learning rate (SGD=1E-2, Adam=1E-3)
 _C.TRAIN.LRF = 0.2  # final OneCycleLR learning rate (lr0 * lrf)
-_C.TRAIN.WARMUP_EPOCHS = 3.0
+_C.TRAIN.WARMUP_EPOCHS = 0
 _C.TRAIN.WARMUP_BIASE_LR = 0.1
 _C.TRAIN.WARMUP_MOMENTUM = 0.8
 
@@ -90,10 +153,10 @@ _C.TRAIN.GAMMA1 = 0.99
 _C.TRAIN.GAMMA2 = 0.0
 
 _C.TRAIN.BEGIN_EPOCH = 0
-_C.TRAIN.END_EPOCH = 240
+_C.TRAIN.END_EPOCH = 1
 
 _C.TRAIN.VAL_FREQ = 1
-_C.TRAIN.BATCH_SIZE_PER_GPU =24
+_C.TRAIN.BATCH_SIZE_PER_GPU =32
 _C.TRAIN.SHUFFLE = True
 
 _C.TRAIN.IOU_THRESHOLD = 0.2
