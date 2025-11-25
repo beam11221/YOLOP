@@ -99,5 +99,9 @@ def fedbuff_aggregate(global_model, buffered_updates, server_lr=1.0):
         global_dict[key] = global_dict[key] - (server_lr * avg_delta[key])
     
     global_model.load_state_dict(global_dict)
-    
+
+    # Default configuration settings
+    global_model.gr = 1.0
+    global_model.nc = 1
+
     return global_model
