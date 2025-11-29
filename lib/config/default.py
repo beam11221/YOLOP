@@ -12,6 +12,11 @@ _C.FED.CLIENT_IDS = ['client_1', 'client_2', 'client_3', 'client_4', 'client_5',
                      ]
 _C.FED.EPOCHS = 50
 
+# FedBuff specific configurations
+_C.FED.BUFFER_SIZE = 10  # K in FedBuff paper
+_C.FED.EVAL_FREQUENCY = 5  # Evaluate every N versions
+_C.FED.STALENESS_ENABLED = True  # Enable staleness weighting
+
 # Base paths
 BASE_GLOBAL_PATH = '/workspace/dbb100k_yolop'
 BASE_CLIENT_PATH = '/workspace/dbb100k_yolop_split_15clients'
