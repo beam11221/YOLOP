@@ -504,8 +504,8 @@ def main():
     print("="*60)
     
     stats = r2.upload_directory_concurrent(
-        local_directory='/workspace/YOLOP/runs/BddDataset',
-        r2_prefix='ver1/BddDataset_yolop',
+        local_directory='/Users/beam/Documents/master_degree/datasets/dbb100k_yolop',
+        r2_prefix='ver1/BddDataset_yolop/dataset',
         exclude_patterns=['*.pyc', '__pycache__', '.git', '*.tmp'],
         show_progress=True
     )

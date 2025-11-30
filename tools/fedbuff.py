@@ -222,6 +222,8 @@ def main():
         logger.info(f"\n--- Training Client {client_id} (Update {total_updates}/{max_updates}) ---")
         logger.info(f"Current global version: {current_version}")
         logger.info(f"Buffer status: {fedbuff_buffer.get_buffer_size()}/{buffer_size}")
+        print("loader: ", data_loaders[client_id], dir(data_loaders[client_id]))
+        print("loader: ", data_loaders[client_id].pop())
         
         # Train client and get update
         delta, start_version = train_client_model_fedbuff(

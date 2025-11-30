@@ -48,6 +48,7 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
     # switch to train mode
     model.train()
     start = time.time()
+    print("train function: ", train_loader)
     for i, (input, target, paths, shapes) in enumerate(train_loader):
         intermediate = time.time()
         #print('tims:{}'.format(intermediate-start))

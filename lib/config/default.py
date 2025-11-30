@@ -6,10 +6,13 @@ _C = CN()
 
 # for FedAVG
 _C.FED = CN(new_allowed=True)
-_C.FED.CLIENT_IDS = ['client_1', 'client_2', 'client_3', 'client_4', 'client_5', 
-                     'client_6', 'client_7', 'client_8', 'client_9', 'client_10',
-                     'client_11', 'client_12', 'client_13', 'client_14', 'client_15'
-                     ]
+# _C.FED.CLIENT_IDS = ['client_0', 'client_1', 'client_2', 'client_3', 'client_4', 'client_5', 
+#                      'client_6', 'client_7', 'client_8', 'client_9', 'client_10',
+#                      'client_11', 'client_12', 'client_13', 'client_14'
+#                      ]
+
+_C.FED.CLIENT_IDS = ['client_0', 'client_1', 'client_2']
+
 _C.FED.EPOCHS = 50
 
 # FedBuff specific configurations
@@ -18,8 +21,8 @@ _C.FED.EVAL_FREQUENCY = 5  # Evaluate every N versions
 _C.FED.STALENESS_ENABLED = True  # Enable staleness weighting
 
 # Base paths
-BASE_GLOBAL_PATH = '/workspace/dbb100k_yolop'
-BASE_CLIENT_PATH = '/workspace/dbb100k_yolop_split_15clients'
+BASE_GLOBAL_PATH = '/Users/beam/Documents/master_degree/datasets/dbb100k_yolop/processed/dbb100k_yolop_split_15clients/global_model'
+BASE_CLIENT_PATH = '/Users/beam/Documents/master_degree/datasets/dbb100k_yolop/processed/dbb100k_yolop_split_15clients'
 
 # Define subdirectories for each root type
 ROOT_SUBDIRS = {
