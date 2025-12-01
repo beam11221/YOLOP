@@ -95,6 +95,16 @@ def create_data_generator(client_id, rank):
     
     return {"train": train_loader, "valid": valid_loader, "valid_dataset": valid_dataset}
 
+def compute_model_delta(global_state_dict, client_state_dict):
+    """Compute delta: client - global (only for floating point params)."""
+    delta = {}
+    for key in global_state_dict:
+        if not global_state_dict[key].is_floating_point():
+            continue
+        
+        delta[key] = client_state_dict[key] - global_state_dict[key]
+
+    return delta
 
 def train_client_model_fedbuff(global_model, current_version, data_loader, cfg, 
                                  logger, writer_dict, device, client_id):
@@ -130,7 +140,7 @@ def train_client_model_fedbuff(global_model, current_version, data_loader, cfg,
     # Training setup
     train_loader = data_loader["train"]
     num_batch = len(train_loader)
-    num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 5)
+    num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 0)
     scaler = amp.GradScaler(enabled=device.type != 'cpu')
     
     logger.info(f'=> Client {client_id} starts training from version {start_version}')
@@ -150,7 +160,7 @@ def train_client_model_fedbuff(global_model, current_version, data_loader, cfg,
     # Move to CPU to save memory
     client_model.to("cpu")
     # state_dict = client_model.state_dict()
-    delta = global_model.state_dict() - client_model.state_dict()
+    delta = compute_model_delta(global_model.state_dict(), client_model.state_dict())
     
     # Cleanup
     del client_model, optimizer, criterion
@@ -297,12 +307,32 @@ def main():
                 logger.info(msg)
                 
                 # Write to TensorBoard
+                # ==================== ADDED: Write validation metrics to TensorBoard ====================
                 writer = writer_dict['writer']
-                writer.add_scalar('fedbuff/total_loss', total_loss, current_version)
-                writer.add_scalar('fedbuff/da_seg_miou', da_segment_results[2], current_version)
-                writer.add_scalar('fedbuff/ll_seg_miou', ll_segment_results[2], current_version)
-                writer.add_scalar('fedbuff/detect_mAP@0.5', detect_results[2], current_version)
-                writer.add_scalar('fedbuff/detect_mAP@0.5:0.95', detect_results[3], current_version)
+                global_steps = writer_dict['valid_global_steps']
+                
+                # Write validation loss
+                writer.add_scalar('global_model/total_loss', total_loss, global_steps)
+                
+                # Write driving area segmentation metrics
+                writer.add_scalar('global_model/da_seg_acc', da_segment_results[0], global_steps)
+                writer.add_scalar('global_model/da_seg_iou', da_segment_results[1], global_steps)
+                writer.add_scalar('global_model/da_seg_miou', da_segment_results[2], global_steps)
+                
+                # Write lane line segmentation metrics
+                writer.add_scalar('global_model/ll_seg_acc', ll_segment_results[0], global_steps)
+                writer.add_scalar('global_model/ll_seg_iou', ll_segment_results[1], global_steps)
+                writer.add_scalar('global_model/ll_seg_miou', ll_segment_results[2], global_steps)
+                
+                # Write detection metrics
+                writer.add_scalar('global_model/detect_precision', detect_results[0], global_steps)
+                writer.add_scalar('global_model/detect_recall', detect_results[1], global_steps)
+                writer.add_scalar('global_model/detect_mAP@0.5', detect_results[2], global_steps)
+                writer.add_scalar('global_model/detect_mAP@0.5:0.95', detect_results[3], global_steps)
+                
+                # Update global steps counter for validation
+                writer_dict['valid_global_steps'] = global_steps + 1
+                # ==================== END OF ADDED CODE ====================
                 
                 global_model.to("cpu")
                 del criterion

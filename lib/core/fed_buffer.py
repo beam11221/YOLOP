@@ -87,7 +87,9 @@ def fedbuff_aggregate(global_model, buffered_updates, server_lr=1.0):
 
     # Step 1: Compute weighted average of deltas → Δ̄
     avg_delta = {}
-    for key in global_dict.keys():
+    # Use keys from the delta (which only has floating-point params)
+    delta_keys = buffered_updates[0]['state_dict_delta'].keys()
+    for key in delta_keys:
         avg_delta[key] = torch.zeros_like(global_dict[key])
         
         for update_info, weight in zip(buffered_updates, normalized_weights):
@@ -95,7 +97,7 @@ def fedbuff_aggregate(global_model, buffered_updates, server_lr=1.0):
             avg_delta[key] += weight * delta
     
     # Step 2: Apply to global model → w^(t+1) = w^t - η_g · Δ̄
-    for key in global_dict.keys():
+    for key in avg_delta.keys(): # Only iterate over keys we computed (trained)
         global_dict[key] = global_dict[key] - (server_lr * avg_delta[key])
     
     global_model.load_state_dict(global_dict)
