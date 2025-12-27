@@ -102,7 +102,7 @@ def compute_model_delta(global_state_dict, client_state_dict):
         if not global_state_dict[key].is_floating_point():
             continue
         
-        delta[key] = client_state_dict[key] - global_state_dict[key]
+        delta[key] = global_state_dict[key] - client_state_dict[key]
 
     return delta
 
