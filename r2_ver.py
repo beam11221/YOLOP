@@ -321,6 +321,59 @@ class CloudflareR2Optimized:
             print(f"✗ Error listing objects: {e}")
         
         return stats
+
+    def download_file(self, r2_object_name, local_file_path=None, create_dirs=True):
+        """
+        Download a specific file from R2
+        
+        Args:
+            r2_object_name: The key/path of the object in R2 bucket
+            local_file_path: Local path to save the file (default: current dir with same filename)
+            create_dirs: Whether to create local directories if they don't exist
+            
+        Returns:
+            tuple: (success: bool, r2_object_name: str, local_path: str, size: int)
+        """
+        if local_file_path is None:
+            local_file_path = os.path.basename(r2_object_name)
+        
+        try:
+            # Create directory if needed
+            if create_dirs:
+                dir_path = os.path.dirname(local_file_path)
+                if dir_path:
+                    os.makedirs(dir_path, exist_ok=True)
+            
+            # Get file size before download
+            response = self.s3_client.head_object(Bucket=self.bucket_name, Key=r2_object_name)
+            file_size = response['ContentLength']
+            
+            # Download the file
+            print(f"📥 Downloading: {r2_object_name}")
+            print(f"📍 To: {local_file_path}")
+            print(f"📦 Size: {self._format_size(file_size)}")
+            
+            start_time = time.time()
+            self.s3_client.download_file(self.bucket_name, r2_object_name, local_file_path)
+            elapsed_time = time.time() - start_time
+            
+            print(f"✓ Download completed in {elapsed_time:.2f}s")
+            if file_size > 0 and elapsed_time > 0:
+                speed = file_size / elapsed_time / (1024 * 1024)
+                print(f"⚡ Speed: {speed:.2f} MB/s")
+            
+            return True, r2_object_name, local_file_path, file_size
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            if error_code == '404' or error_code == 'NoSuchKey':
+                print(f"✗ File not found: {r2_object_name}")
+            else:
+                print(f"✗ Error downloading {r2_object_name}: {e}")
+            return False, r2_object_name, local_file_path, 0
+        except Exception as e:
+            print(f"✗ Error downloading {r2_object_name}: {e}")
+            return False, r2_object_name, local_file_path, 0
     
     def _delete_single_object(self, r2_object_name):
         """Internal method for thread-safe single object deletion"""
@@ -499,62 +552,69 @@ def main():
     )
     
     # Example 1: Upload directory with concurrent uploads
-    print("="*60)
-    print("CONCURRENT DIRECTORY UPLOAD")
-    print("="*60)
+    # print("="*60)
+    # print("CONCURRENT DIRECTORY UPLOAD")
+    # print("="*60)
     
-    stats = r2.upload_directory_concurrent(
-        local_directory='/Users/beam/Documents/master_degree/datasets/dbb100k_yolop',
-        r2_prefix='ver1/BddDataset_yolop/dataset',
-        exclude_patterns=['*.pyc', '__pycache__', '.git', '*.tmp'],
-        show_progress=True
-    )
+    # stats = r2.upload_directory_concurrent(
+    #     local_directory='/workspace/YOLOP/runs/BddDataset',
+    #     r2_prefix='ver1/BddDataset_yolop',
+    #     exclude_patterns=['*.pyc', '__pycache__', '.git', '*.tmp'],
+    #     show_progress=True
+    # )
     
-    print(f"\n✅ Upload completed!")
-    print(f"   Files uploaded: {stats['success_count']}")
-    print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
+    # print(f"\n✅ Upload completed!")
+    # print(f"   Files uploaded: {stats['success_count']}")
+    # print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
     
-    # # Example 2: Download directory with concurrent downloads
+    # Example 2: Download directory with concurrent downloads
     # print("\n" + "="*60)
     # print("CONCURRENT DIRECTORY DOWNLOAD")
     # print("="*60)
     
     # stats = r2.download_directory_concurrent(
-    #     r2_prefix='uploads/my_project',
-    #     local_directory='downloaded_project',
+    #     r2_prefix='ver1/BddDataset_yolop/dataset//',
+    #     local_directory='/workspace/YOLOP/dataset',
     #     show_progress=True
     # )
     
     # print(f"\n✅ Download completed!")
     # print(f"   Files downloaded: {stats['success_count']}")
     # print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
-    
-    # # Example 3: Delete directory (with dry run first)
-    # print("\n" + "="*60)
-    # print("DELETE DIRECTORY (DRY RUN)")
-    # print("="*60)
-    
-    # # First do a dry run to see what would be deleted
-    # stats = r2.delete_directory_concurrent(
-    #     r2_prefix='uploads/old_project',
-    #     show_progress=True,
-    #     dry_run=True  # This will only list files without deleting
+
+    # Example 2.1: Download single file
+    # success, r2_path, local_path, size = r2.download_file(
+    #     r2_object_name='ver1/BddDataset_yolop/dataset/15_clients.zip',
+    #     local_file_path='/workspace/YOLOP/dataset'
     # )
     
-    # Example 4: Actually delete directory
-    # print("\n" + "="*60)
-    # print("DELETE DIRECTORY (ACTUAL)")
-    # print("="*60)
+    # Example 3: Delete directory (with dry run first)
+    directory_to_delete = 'ver1/BddDataset_yolop/dataset/processed/'
+    print("\n" + "="*60)
+    print("DELETE DIRECTORY (DRY RUN)")
+    print("="*60)
     
-    # stats = r2.delete_directory_concurrent(
-    #     r2_prefix='uploads/',
-    #     show_progress=True,
-    #     dry_run=False  # This will actually delete files (requires confirmation)
-    # )
+    # First do a dry run to see what would be deleted
+    stats = r2.delete_directory_concurrent(
+        r2_prefix=directory_to_delete,
+        show_progress=True,
+        dry_run=True  # This will only list files without deleting
+    )
     
-    # print(f"\n✅ Deletion completed!")
-    # print(f"   Files deleted: {stats['success_count']}")
-    # print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
+    # # Example 4: Actually delete directory
+    print("\n" + "="*60)
+    print("DELETE DIRECTORY (ACTUAL)")
+    print("="*60)
+    
+    stats = r2.delete_directory_concurrent(
+        r2_prefix=directory_to_delete,
+        show_progress=True,
+        dry_run=False  # This will actually delete files (requires confirmation)
+    )
+    
+    print(f"\n✅ Deletion completed!")
+    print(f"   Files deleted: {stats['success_count']}")
+    print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
 
 
 if __name__ == "__main__":
