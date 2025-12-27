@@ -192,10 +192,12 @@ def main():
 
     # Generate dataloaders for each client
     logger.info(f"Creating data loaders for {len(cfg.FED.CLIENT_IDS)} clients...")
-    data_loaders = {
-        client_id: create_data_generator(client_id, rank) 
-        for client_id in cfg.FED.CLIENT_IDS
-    }
+    # data_loaders = {
+    #     client_id: create_data_generator(client_id, rank) 
+    #     for client_id in cfg.FED.CLIENT_IDS
+    # }
+    # Do not create all data loaders at once to save memory
+    data_loaders = {}
     data_loaders["global_model"] = create_data_generator("global_model", rank)
 
     writer_dict = {
@@ -233,6 +235,8 @@ def main():
         logger.info(f"Current global version: {current_version}")
         logger.info(f"Buffer status: {fedbuff_buffer.get_buffer_size()}/{buffer_size}")
         
+        data_loaders[client_id] = create_data_generator(client_id, rank)
+
         # Train client and get update
         delta, start_version = train_client_model_fedbuff(
             global_model, current_version, data_loaders[client_id],
@@ -250,6 +254,10 @@ def main():
         logger.info(f"Client {client_id} update added to buffer (staleness: {current_version - start_version})")
         logger.info(f"Buffer: {fedbuff_buffer.get_buffer_size()}/{buffer_size} updates")
         
+        # Cleanup client data loader to save memory
+        del client_loaders[client_id]
+        torch.cuda.empty_cache()
+
         # Check if buffer is full - time to aggregate
         if fedbuff_buffer.is_full():
             logger.info(f"\n{'='*60}")

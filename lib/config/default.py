@@ -6,23 +6,23 @@ _C = CN()
 
 # for FedAVG
 _C.FED = CN(new_allowed=True)
-# _C.FED.CLIENT_IDS = ['client_0', 'client_1', 'client_2', 'client_3', 'client_4', 'client_5', 
-#                      'client_6', 'client_7', 'client_8', 'client_9', 'client_10',
-#                      'client_11', 'client_12', 'client_13', 'client_14'
-#                      ]
+_C.FED.CLIENT_IDS = ['client_0', 'client_1', 'client_2', 'client_3', 'client_4', 'client_5', 
+                     'client_6', 'client_7', 'client_8', 'client_9', 'client_10',
+                     'client_11', 'client_12', 'client_13', 'client_14'
+                     ]
 
-_C.FED.CLIENT_IDS = ['small_client_0', 'small_client_0']
+# _C.FED.CLIENT_IDS = ['small_client_0', 'small_client_0']
 
 _C.FED.EPOCHS = 50
 
 # FedBuff specific configurations
-_C.FED.BUFFER_SIZE = 10  # K in FedBuff paper
+_C.FED.BUFFER_SIZE = 15  # K in FedBuff paper
 _C.FED.EVAL_FREQUENCY = 1  # Evaluate every N versions
 _C.FED.STALENESS_ENABLED = True  # Enable staleness weighting
 
 # Base paths
-BASE_GLOBAL_PATH = '/workspace/dataset/small_client_0'
-BASE_CLIENT_PATH = '/workspace/dataset'
+BASE_GLOBAL_PATH = '/workspace/YOLOP/dataset/15_clients/global_model'
+BASE_CLIENT_PATH = '/workspace/YOLOP/dataset/15_clients'
 
 # Define subdirectories for each root type
 ROOT_SUBDIRS = {
@@ -45,34 +45,6 @@ for root_name, subdir in ROOT_SUBDIRS.items():
     
     # Assign to config
     setattr(_C.FED, root_name, root_node)
-
-# # Convert dict to CfgNode for DATAROOT
-# _C.FED.DATAROOT = CN()
-# _C.FED.DATAROOT.global_model = '/workspace/dbb100k_yolop/images'
-# _C.FED.DATAROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/images'
-# _C.FED.DATAROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/images'
-# _C.FED.DATAROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/images'
-
-# # Convert dict to CfgNode for LABELROOT
-# _C.FED.LABELROOT = CN()
-# _C.FED.LABELROOT.global_model = '/workspace/dbb100k_yolop/det_annotations'
-# _C.FED.LABELROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/det_annotations'
-# _C.FED.LABELROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/det_annotations'
-# _C.FED.LABELROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/det_annotations'
-
-# # Convert dict to CfgNode for MASKROOT
-# _C.FED.MASKROOT = CN()
-# _C.FED.MASKROOT.global_model = '/workspace/dbb100k_yolop/da_seg_annotations'
-# _C.FED.MASKROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/da_seg_annotations'
-# _C.FED.MASKROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/da_seg_annotations'
-# _C.FED.MASKROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/da_seg_annotations'
-
-# # Convert dict to CfgNode for LANEROOT
-# _C.FED.LANEROOT = CN()
-# _C.FED.LANEROOT.global_model = '/workspace/dbb100k_yolop/ll_seg_annotations'
-# _C.FED.LANEROOT.client_1 = '/workspace/dbb100k_yolop_split/client_1/ll_seg_annotations'
-# _C.FED.LANEROOT.client_2 = '/workspace/dbb100k_yolop_split/client_2/ll_seg_annotations'
-# _C.FED.LANEROOT.client_3 = '/workspace/dbb100k_yolop_split/client_3/ll_seg_annotations'
 
 _C.LOG_DIR = 'runs/client_3'
 _C.GPUS = (0,1)     
@@ -126,7 +98,6 @@ _C.DATASET.MASKROOT = '/workspace/dbb100k_yolop_split/client_3/da_seg_annotation
 _C.DATASET.LANEROOT = '/workspace/dbb100k_yolop_split/client_3/ll_seg_annotations'               # the path of ll_seg_annotations folder
 _C.DATASET.DATASET = 'BddDataset'
 _C.DATASET.TRAIN_SET = 'train'
-# _C.DATASET.TRAIN_SET = 'val'
 _C.DATASET.TEST_SET = 'val'
 _C.DATASET.DATA_FORMAT = 'jpg'
 _C.DATASET.SELECT_DATA = False
