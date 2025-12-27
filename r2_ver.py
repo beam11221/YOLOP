@@ -568,53 +568,47 @@ def main():
     # print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
     
     # Example 2: Download directory with concurrent downloads
+    print("\n" + "="*60)
+    print("CONCURRENT DIRECTORY DOWNLOAD")
+    print("="*60)
+    
+    stats = r2.download_directory_concurrent(
+        r2_prefix='ver1/BddDataset_yolop/dataset/',
+        local_directory='/workspace/YOLOP/dataset',
+        show_progress=True
+    )
+    
+    print(f"\n✅ Download completed!")
+    print(f"   Files downloaded: {stats['success_count']}")
+    print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
+
+    # Example 3: Delete directory (with dry run first)
+    # directory_to_delete = 'ver1/BddDataset_yolop/dataset/processed/'
     # print("\n" + "="*60)
-    # print("CONCURRENT DIRECTORY DOWNLOAD")
+    # print("DELETE DIRECTORY (DRY RUN)")
     # print("="*60)
     
-    # stats = r2.download_directory_concurrent(
-    #     r2_prefix='ver1/BddDataset_yolop/dataset//',
-    #     local_directory='/workspace/YOLOP/dataset',
-    #     show_progress=True
+    # # First do a dry run to see what would be deleted
+    # stats = r2.delete_directory_concurrent(
+    #     r2_prefix=directory_to_delete,
+    #     show_progress=True,
+    #     dry_run=True  # This will only list files without deleting
     # )
     
-    # print(f"\n✅ Download completed!")
-    # print(f"   Files downloaded: {stats['success_count']}")
+    # # # Example 4: Actually delete directory
+    # print("\n" + "="*60)
+    # print("DELETE DIRECTORY (ACTUAL)")
+    # print("="*60)
+    
+    # stats = r2.delete_directory_concurrent(
+    #     r2_prefix=directory_to_delete,
+    #     show_progress=True,
+    #     dry_run=False  # This will actually delete files (requires confirmation)
+    # )
+    
+    # print(f"\n✅ Deletion completed!")
+    # print(f"   Files deleted: {stats['success_count']}")
     # print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
-
-    # Example 2.1: Download single file
-    # success, r2_path, local_path, size = r2.download_file(
-    #     r2_object_name='ver1/BddDataset_yolop/dataset/15_clients.zip',
-    #     local_file_path='/workspace/YOLOP/dataset'
-    # )
-    
-    # Example 3: Delete directory (with dry run first)
-    directory_to_delete = 'ver1/BddDataset_yolop/dataset/processed/'
-    print("\n" + "="*60)
-    print("DELETE DIRECTORY (DRY RUN)")
-    print("="*60)
-    
-    # First do a dry run to see what would be deleted
-    stats = r2.delete_directory_concurrent(
-        r2_prefix=directory_to_delete,
-        show_progress=True,
-        dry_run=True  # This will only list files without deleting
-    )
-    
-    # # Example 4: Actually delete directory
-    print("\n" + "="*60)
-    print("DELETE DIRECTORY (ACTUAL)")
-    print("="*60)
-    
-    stats = r2.delete_directory_concurrent(
-        r2_prefix=directory_to_delete,
-        show_progress=True,
-        dry_run=False  # This will actually delete files (requires confirmation)
-    )
-    
-    print(f"\n✅ Deletion completed!")
-    print(f"   Files deleted: {stats['success_count']}")
-    print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
 
 
 if __name__ == "__main__":
