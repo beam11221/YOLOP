@@ -22,8 +22,10 @@ def log_memory():
     process = psutil.Process(os.getpid())
     mem_gb = process.memory_info().rss / 1024**3
 
-    return meb_gb
-    # logger.info(f"RAM Usage: {mem_gb:.2f} GB")
+    # Count child processes (DataLoader workers)
+    children = process.children(recursive=True)
+
+    return f"RAM: {mem_gb:.2f} GB | Child processes: {len(children)}"
 
 def create_logger(cfg, cfg_path, phase='train', rank=-1):
     # set up logger dir
