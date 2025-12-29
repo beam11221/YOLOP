@@ -3,6 +3,7 @@ import logging
 import time
 from collections import namedtuple
 from pathlib import Path
+import psutil
 
 import torch
 import torch.optim as optim
@@ -16,6 +17,11 @@ import re
 def clean_str(s):
     # Cleans a string by replacing special characters with underscore _
     return re.sub(pattern="[|@#!¡·$€%&()=?¿^*;:,¨´><+]", repl="_", string=s)
+
+def log_memory():
+    process = psutil.Process(os.getpid())
+    mem_gb = process.memory_info().rss / 1024**3
+    print(f"RAM Usage: {mem_gb:.2f} GB")
 
 def create_logger(cfg, cfg_path, phase='train', rank=-1):
     # set up logger dir

@@ -1,5 +1,5 @@
 import argparse
-import os, sys
+import os, sys, gc
 import math
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
@@ -14,7 +14,7 @@ import torchvision.transforms as transforms
 
 from tensorboardX import SummaryWriter
 
-from lib.utils import DataLoaderX, torch_distributed_zero_first
+from lib.utils import DataLoaderX, torch_distributed_zero_first, log_memory
 import lib.dataset as dataset
 from lib.config import cfg
 from lib.config import update_config
@@ -255,8 +255,11 @@ def main():
         logger.info(f"Buffer: {fedbuff_buffer.get_buffer_size()}/{buffer_size} updates")
         
         # Cleanup client data loader to save memory
-        del client_loaders[client_id]
+        del data_loaders[client_id]
+        gc.collect()
         torch.cuda.empty_cache()
+
+        log_memory()
 
         # Check if buffer is full - time to aggregate
         if fedbuff_buffer.is_full():
