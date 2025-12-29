@@ -48,7 +48,7 @@ for root_name, subdir in ROOT_SUBDIRS.items():
 
 _C.LOG_DIR = 'runs/client_3'
 _C.GPUS = (0,1)     
-_C.WORKERS = 16
+_C.WORKERS = 0
 _C.PIN_MEMORY = False
 _C.PRINT_FREQ = 20
 _C.AUTO_RESUME =False       # Resume from the last training interrupt
