@@ -163,7 +163,7 @@ def train_client_model_fedbuff(global_model, current_version, data_loader, cfg,
     delta = compute_model_delta(global_model.state_dict(), client_model.state_dict())
     
     # Cleanup
-    del client_model, optimizer, criterion
+    del client_model, optimizer, criterion, lr_scheduler
     torch.cuda.empty_cache()
     
     logger.info(f"Client {client_id} training complete")
