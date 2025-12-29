@@ -253,13 +253,14 @@ def main():
         
         logger.info(f"Client {client_id} update added to buffer (staleness: {current_version - start_version})")
         logger.info(f"Buffer: {fedbuff_buffer.get_buffer_size()}/{buffer_size} updates")
+        log_memory(logger)
         
         # Cleanup client data loader to save memory
         del data_loaders[client_id]
         gc.collect()
         torch.cuda.empty_cache()
 
-        log_memory()
+        log_memory(logger)
 
         # Check if buffer is full - time to aggregate
         if fedbuff_buffer.is_full():

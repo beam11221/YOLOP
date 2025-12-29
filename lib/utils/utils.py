@@ -18,10 +18,10 @@ def clean_str(s):
     # Cleans a string by replacing special characters with underscore _
     return re.sub(pattern="[|@#!¡·$€%&()=?¿^*;:,¨´><+]", repl="_", string=s)
 
-def log_memory():
+def log_memory(logger):
     process = psutil.Process(os.getpid())
     mem_gb = process.memory_info().rss / 1024**3
-    print(f"RAM Usage: {mem_gb:.2f} GB")
+    logger.info(f"RAM Usage: {mem_gb:.2f} GB")
 
 def create_logger(cfg, cfg_path, phase='train', rank=-1):
     # set up logger dir
