@@ -24,8 +24,7 @@ def log_memory():
 
     # Count child processes (DataLoader workers)
     children = process.children(recursive=True)
-
-    return f"RAM: {mem_gb:.2f} GB | Child processes: {len(children)}"
+    return "RAM: {} GB | Child processes: {}".format(mem_gb, len(children))
 
 def create_logger(cfg, cfg_path, phase='train', rank=-1):
     # set up logger dir

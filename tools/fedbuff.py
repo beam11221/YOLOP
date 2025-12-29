@@ -234,7 +234,7 @@ def main():
         logger.info(f"\n--- Training Client {client_id} (Update {total_updates}/{max_updates}) ---")
         logger.info(f"Current global version: {current_version}")
         logger.info(f"Buffer status: {fedbuff_buffer.get_buffer_size()}/{buffer_size}")
-        logger.info(f"RAM usage before client {client_id} training: {log_memory():.2f} GB")
+        logger.info(f"RAM usage before client {client_id} training: {log_memory()} GB")
 
         
         data_loaders[client_id] = create_data_generator(client_id, rank)
@@ -255,14 +255,14 @@ def main():
         
         logger.info(f"Client {client_id} update added to buffer (staleness: {current_version - start_version})")
         logger.info(f"Buffer: {fedbuff_buffer.get_buffer_size()}/{buffer_size} updates")
-        logger.info(f"RAM usage after client {client_id} training: {log_memory():.2f} GB")
+        logger.info(f"RAM usage after client {client_id} training: {log_memory()} GB")
         
         # Cleanup client data loader to save memory
         del data_loaders[client_id]
         gc.collect()
         torch.cuda.empty_cache()
 
-        logger.info(f"RAM usage after cleanup: {log_memory():.2f} GB")
+        logger.info(f"RAM usage after cleanup: {log_memory()} GB")
 
         # Check if buffer is full - time to aggregate
         if fedbuff_buffer.is_full():
