@@ -295,6 +295,13 @@ def main():
             torch.save(global_model.state_dict(), save_path)
             logger.info(f"Checkpoint saved: {save_path}")
             
+            # Cleanup after model aggregation
+            logger.info(f"RAM usage after aggregation: {log_memory()} GB")
+            del buffered_updates
+            gc.collect()
+            torch.cuda.empty_cache()
+            logger.info(f"RAM usage after cleanup the buffers: {log_memory()} GB")
+
             # Evaluate model
             if current_version % cfg.FED.get('EVAL_FREQUENCY', 5) == 0:
                 logger.info(f"Starting evaluation at version {current_version}...")
@@ -351,7 +358,7 @@ def main():
                 global_model.to("cpu")
                 del criterion
                 torch.cuda.empty_cache()
-    
+
     # Save final model
     final_path = os.path.join(final_output_dir, 'final_fedbuff_model.pth')
     torch.save(global_model.state_dict(), final_path)

@@ -6,18 +6,20 @@ _C = CN()
 
 # for FedAVG
 _C.FED = CN(new_allowed=True)
-_C.FED.CLIENT_IDS = ['client_0', 'client_1', 'client_2', 'client_3', 'client_4', 'client_5', 
-                     'client_6', 'client_7', 'client_8', 'client_9', 'client_10',
-                     'client_11', 'client_12', 'client_13', 'client_14'
-                     ]
+# _C.FED.CLIENT_IDS = ['client_0', 'client_1', 'client_2', 'client_3', 'client_4', 'client_5', 
+#                      'client_6', 'client_7', 'client_8', 'client_9', 'client_10',
+#                      'client_11', 'client_12', 'client_13', 'client_14'
+#                      ]
 
+_C.FED.CLIENT_IDS = ['client_0', 'client_1']
 # _C.FED.CLIENT_IDS = ['small_client_0', 'small_client_0']
 
 _C.FED.EPOCHS = 50
 
 # FedBuff specific configurations
-_C.FED.BUFFER_SIZE = 15  # K in FedBuff paper
-_C.FED.EVAL_FREQUENCY = 1  # Evaluate every N versions
+# _C.FED.BUFFER_SIZE = 15  # K in FedBuff paper
+_C.FED.BUFFER_SIZE = 2  # K in FedBuff paper
+_C.FED.EVAL_FREQUENCY = 10  # Evaluate every N versions
 _C.FED.STALENESS_ENABLED = True  # Enable staleness weighting
 
 # Base paths
