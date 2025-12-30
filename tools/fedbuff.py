@@ -258,7 +258,7 @@ def main():
         logger.info(f"RAM usage after client {client_id} training: {log_memory()} GB")
         
         # Cleanup client data loader to save memory
-        del data_loaders[client_id]
+        del data_loaders[client_id], delta, start_version
         gc.collect()
         torch.cuda.empty_cache()
 
