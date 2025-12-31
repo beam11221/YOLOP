@@ -14,12 +14,12 @@ _C.FED = CN(new_allowed=True)
 _C.FED.CLIENT_IDS = ['client_0', 'client_1']
 # _C.FED.CLIENT_IDS = ['small_client_0', 'small_client_0']
 
-_C.FED.EPOCHS = 50
+_C.FED.EPOCHS = 10
 
 # FedBuff specific configurations
 # _C.FED.BUFFER_SIZE = 15  # K in FedBuff paper
 _C.FED.BUFFER_SIZE = 2  # K in FedBuff paper
-_C.FED.EVAL_FREQUENCY = 10  # Evaluate every N versions
+_C.FED.EVAL_FREQUENCY = 100  # Evaluate every N versions
 _C.FED.STALENESS_ENABLED = True  # Enable staleness weighting
 
 # Base paths
@@ -48,7 +48,8 @@ for root_name, subdir in ROOT_SUBDIRS.items():
     # Assign to config
     setattr(_C.FED, root_name, root_node)
 
-_C.LOG_DIR = 'runs/client_3'
+_C.LOG_DIR = 'runs'
+_C.EXP_NAME = 'test_1'
 _C.GPUS = (0,1)     
 _C.WORKERS = 0
 _C.PIN_MEMORY = False

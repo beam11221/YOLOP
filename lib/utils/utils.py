@@ -34,11 +34,12 @@ def create_logger(cfg, cfg_path, phase='train', rank=-1):
     cfg_path = os.path.basename(cfg_path).split('.')[0]
 
     if rank in [-1, 0]:
-        time_str = time.strftime('%Y-%m-%d-%H-%M')
-        log_file = '{}_{}_{}.log'.format(cfg_path, time_str, phase)
+        # time_str = time.strftime('%Y-%m-%d-%H-%M')
+
+        log_file = '{}_{}_{}.log'.format(cfg_path, cfg.EXP_NAME, phase)
         # set up tensorboard_log_dir
         tensorboard_log_dir = Path(cfg.LOG_DIR) / dataset / model / \
-                                  (cfg_path + '_' + time_str)
+                                  (cfg_path + '_' + cfg.EXP_NAME)
         final_output_dir = tensorboard_log_dir
         if not tensorboard_log_dir.exists():
             print('=> creating {}'.format(tensorboard_log_dir))
