@@ -1,6 +1,7 @@
 import torch
 import time
 from collections import deque
+import gc
 
 class FedBuffBuffer:
     """
@@ -42,6 +43,7 @@ class FedBuffBuffer:
     def clear(self):
         """Clear the buffer after aggregation"""
         self.buffer.clear()
+        gc.collect()
     
     def get_updates(self):
         """Get all updates currently in buffer"""
@@ -77,8 +79,8 @@ def fedbuff_aggregate(global_model, buffered_updates, server_lr=1.0):
     # Calculate staleness weights
     staleness_weights = []
     for update_info in buffered_updates:
-        tau = update_info['staleness']
-        weight = FedBuffBuffer.staleness_weight(tau)
+        # tau = update_info['staleness']
+        weight = FedBuffBuffer.staleness_weight(update_info['staleness'])
         staleness_weights.append(weight)
     
     # Normalize weights to sum to 1

@@ -1,4 +1,5 @@
 import time
+import gc
 from lib.core.evaluate import ConfusionMatrix,SegmentationMetric
 from lib.core.general import non_max_suppression,check_img_size,scale_coords,xyxy2xywh,xywh2xyxy,box_iou,coco80_to_coco91_class,plot_images,ap_per_class,output_to_target
 from lib.utils.utils import time_synchronized
@@ -49,14 +50,15 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
     model.train()
     start = time.time()
 
+    # warm up
+    lf = lambda x: ((1 + math.cos(x * math.pi / cfg.TRAIN.END_EPOCH)) / 2) * \
+                    (1 - cfg.TRAIN.LRF) + cfg.TRAIN.LRF  # cosine
+
     for i, (input, target, paths, shapes) in enumerate(train_loader):
         intermediate = time.time()
-        #print('tims:{}'.format(intermediate-start))
         num_iter = i + num_batch * (epoch - 1)
         if num_iter < num_warmup:
-            # warm up
-            lf = lambda x: ((1 + math.cos(x * math.pi / cfg.TRAIN.END_EPOCH)) / 2) * \
-                           (1 - cfg.TRAIN.LRF) + cfg.TRAIN.LRF  # cosine
+            
             xi = [0, num_warmup]
             # model.gr = np.interp(ni, xi, [0.0, 1.0])  # iou loss ratio (obj_loss = 1.0 or iou)
             for j, x in enumerate(optimizer.param_groups):
@@ -68,14 +70,11 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
         data_time.update(time.time() - start)
         if not cfg.DEBUG:
             input = input.to(device, non_blocking=True)
-            assign_target = []
-            for tgt in target:
-                assign_target.append(tgt.to(device))
-            target = assign_target
+            target = [tgt.to(device) for tgt in target]
+
         with amp.autocast(enabled=device.type != 'cpu'):
             outputs = model(input)
             total_loss, head_losses = criterion(outputs, target, shapes,model)
-            # print(head_losses)
 
         # compute gradient and do update step
         optimizer.zero_grad()
@@ -86,10 +85,6 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
         if rank in [-1, 0]:
             # measure accuracy and record loss
             losses.update(total_loss.item(), input.size(0))
-
-            # _, avg_acc, cnt, pred = accuracy(output.detach().cpu().numpy(),
-            #                                  target.detach().cpu().numpy())
-            # acc.update(avg_acc, cnt)
 
             # measure elapsed time
             batch_time.update(time.time() - start)
@@ -105,20 +100,20 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
                           data_time=data_time, loss=losses)
                 logger.info(msg)
 
-                writer = writer_dict['writer']
-                global_steps = writer_dict['valid_global_steps']
+                # writer = writer_dict['writer']
+                # global_steps = writer_dict['valid_global_steps']
                 
-                # writer.add_scalar(f"{client_id}_round{global_steps}/train_loss", losses.val, epoch)
-                writer.add_scalar(f"clients/{client_id}/round_{global_steps}/train_loss", losses.val, epoch)
-
-
-                # writer.add_scalar('train_loss', losses.val, global_steps)
-                # writer.add_scalar('train_acc', acc.val, global_steps)
-                # writer_dict['train_global_steps'] = global_steps + 1
+                # writer.add_scalar(f"clients/{client_id}/round_{global_steps}/train_loss", losses.val, epoch)
+        
 
         if i > 10:
             logger.info("Max batch reached for debug purpose...")
             break
+    del input, target, outputs, total_loss, head_losses, paths, shapes
+    
+    # Cleanup after training loop
+    gc.collect()
+    torch.cuda.empty_cache()
 
 def validate(epoch,config, val_loader, val_dataset, model, criterion, output_dir,
              tb_log_dir, writer_dict=None, logger=None, device='cpu', rank=-1):
