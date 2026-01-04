@@ -92,7 +92,7 @@ def fedbuff_aggregate(global_model, buffered_updates, server_lr=1.0):
     # Use keys from the delta (which only has floating-point params)
     delta_keys = buffered_updates[0]['state_dict_delta'].keys()
     for key in delta_keys:
-        avg_delta[key] = torch.zeros_like(global_dict[key])
+        avg_delta[key] = torch.zeros_like(global_dict[key], dtype=torch.float)
         
         for update_info, weight in zip(buffered_updates, normalized_weights):
             delta = update_info['state_dict_delta'][key].float()
