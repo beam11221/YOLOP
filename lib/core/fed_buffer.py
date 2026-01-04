@@ -13,7 +13,7 @@ class FedBuffBuffer:
         self.current_version = 0
         self.device = device
         
-    def add_update(self, state_dict_delta, client_id, start_version, end_version):
+    def add_update(self, state_dict_delta, client_id, start_version, current_version):
         """
         Add a client update to the buffer
         
@@ -21,14 +21,14 @@ class FedBuffBuffer:
             state_dict_delta: Client's trained model - given_global_model
             client_id: Identifier for the client
             start_version: Global model version when client started training
-            end_version: Global model version when client finished training
+            current_version: Global model version when client finished training (Current version of global model)
         """
         self.buffer.append({
             'state_dict_delta': state_dict_delta,
             'client_id': client_id,
-            'staleness': end_version - start_version,
+            'staleness': current_version - start_version,
             'start_version': start_version,
-            'end_version': end_version,
+            'current_version': current_version,
             'timestamp': time.time()
         })
         

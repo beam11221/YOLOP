@@ -50,6 +50,7 @@ for root_name, subdir in ROOT_SUBDIRS.items():
 
 _C.LOG_DIR = 'runs'
 _C.EXP_NAME = 'test_1'
+
 _C.GPUS = (0,1)     
 _C.WORKERS = 0
 _C.PIN_MEMORY = False

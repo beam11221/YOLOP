@@ -1,5 +1,5 @@
 import argparse
-import os, sys, gc
+import os, sys, gc, shutil
 import math
 import multiprocessing as mp
 mp.set_start_method('spawn', force=True) # To. ensure CUDA works in subprocesses
@@ -47,16 +47,18 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def serialize_state_dict(state_dict: dict, save_root: str, fed_round: str, client_id: str) -> bytes:
+def serialize_state_dict(state_dict: dict, save_root: str, global_model_version: str, client_id: str, saved_name: str) -> str:
     """Serialize to bytes - creates a complete copy."""
-    delta_output_path = os.path.join(save_root, f"state_dict_task_R{fed_round}_C{client_id}.pt")
+    state_dict_output_path = os.path.join(save_root, "weight_cache", saved_name)
+    os.makedirs(os.path.dirname(state_dict_output_path), exist_ok=True)
+
     torch.save({
         'state_dict': state_dict,
-        'fed_round': fed_round,
+        'global_model_version': global_model_version,
         "client_id": client_id
-    }, delta_output_path)
+    }, state_dict_output_path)
 
-    return delta_output_path
+    return state_dict_output_path
 
 def create_data_generator(client_id, rank):
     normalize = transforms.Normalize(
@@ -119,9 +121,7 @@ def compute_model_delta(global_state_dict, client_state_dict):
 
     return delta
 
-def train_client_model_fedbuff(global_model_path, current_version, cfg, 
-                                 client_id, fed_round,
-                                 result_queue=None):
+def train_client_model_fedbuff(global_model_path, current_version, cfg, client_id,result_queue=None):
     """
     Train a client model for local epochs (FedBuff version)
     Returns: (state_dict on CPU, start_version, end_version)
@@ -140,6 +140,7 @@ def train_client_model_fedbuff(global_model_path, current_version, cfg,
     
     # Create a COPY of global model for this client
     global_state = torch.load(global_model_path, map_location=device, weights_only=True)
+    global_state = global_state['state_dict']
     client_model = get_net(cfg).to(device)
     client_model.load_state_dict(global_state)
 
@@ -190,24 +191,18 @@ def train_client_model_fedbuff(global_model_path, current_version, cfg,
     # Move to CPU to save memory
     client_model.to("cpu")
     delta = compute_model_delta(global_model.state_dict(), client_model.state_dict())
-    state_dict_path = serialize_state_dict(delta, final_output_dir, fed_round, client_id)
+    state_dict_path = serialize_state_dict(delta, final_output_dir, current_version, client_id, f"fed_buffer/{client_id}.pt")
+
     
-    # Cleanup
-    del client_model, optimizer, criterion, lr_scheduler, scaler, train_loader
-    gc.collect()
-    torch.cuda.empty_cache()
-    
-    logger.info(f"Client {client_id} training complete")
+    logger.info(f"Client {client_id} training completed")
     logger.info(f"[INNER]RAM usage after client {client_id} training: {log_memory()} GB")
 
     result = {
             "client_id": client_id,
-            "fed_round": fed_round,
-            "state_dict": state_dict_path,
-            "success": True,
+            "global_model_version": start_version,
+            "state_dict": state_dict_path
         }
     result_queue.put(result)
-
 
 
 def main():
@@ -263,60 +258,86 @@ def main():
     logger.info(f"Buffer size K: {buffer_size}")
     logger.info(f"{'='*60}\n")
 
-    for fed_round in range(cfg.FED.EPOCHS):
-        logger.info(f"\n--- Fed Round {fed_round}/{cfg.FED.EPOCHS} ---")
-        for client_id in cfg.FED.CLIENT_IDS:
-            total_updates += 1
-            
-            logger.info(f"\n--- Training Client {client_id} (Update {total_updates}/{max_updates}) ---")
-            logger.info(f"Current global version: {current_version}")
-            logger.info(f"Buffer status: {fedbuff_buffer.get_buffer_size()}/{buffer_size}")
-            logger.info(f"RAM usage before client {client_id} training: {log_memory()} GB")
+    for _ in range(max_updates):
+        # Select next client (round-robin or random)
+        client_id = cfg.FED.CLIENT_IDS[client_idx % len(cfg.FED.CLIENT_IDS)]
+        client_idx += 1
+        total_updates += 1
+        
+        logger.info(f"\n--- Training Client {client_id} (Update {total_updates}/{max_updates}) ---")
+        logger.info(f"Current global version: {current_version}")
+        logger.info(f"Buffer status: {fedbuff_buffer.get_buffer_size()}/{buffer_size}")
+        logger.info(f"RAM usage before client {client_id} training: {log_memory()} GB")
 
+        # For simplicity, select the same global_model for all client.
+        global_model_path = serialize_state_dict(global_model.state_dict(), 
+                                                 final_output_dir, 
+                                                 current_version, 
+                                                 client_id, 
+                                                 f"global_model/version_{current_version}.pt"
+                                                 )
 
-            global_model_path = os.path.join(final_output_dir, "weight_caches", "global_model.pt")
-            os.makedirs(os.path.dirname(global_model_path), exist_ok=True)
-            torch.save(global_model.state_dict(), global_model_path)
+        # Create queue for receiving results
+        result_queue = mp.Queue()
+        process = mp.Process(
+            target=train_client_model_fedbuff,
+            kwargs={
+                "global_model_path": global_model_path,
+                "current_version": current_version,
+                "cfg": cfg,
+                # "logger": logger,
+                # "writer_dict": writer_dict,
+                "client_id": client_id,
+                "result_queue": result_queue
+            }
+        )
+        process.start()
+        process.join()
 
-            # Create queue for receiving results
-            result_queue = mp.Queue()
-            
-            # Create and start subprocess
-            process = mp.Process(
-                target=train_client_model_fedbuff,
-                kwargs={
-                    "global_model_path": global_model_path,
-                    "current_version": current_version,
-                    "cfg": cfg,
-                    # "logger": logger,
-                    # "writer_dict": writer_dict,
-                    "client_id": client_id,
-                    "fed_round": fed_round,
-                    "result_queue": result_queue
-                }
+        # Retrieve results
+        if not result_queue.empty():
+            result = result_queue.get()
+            logger.info(f"Received results from client {client_id} training process: {result}")
+
+            # Add update to buffer
+            fedbuff_buffer.add_update(
+                state_dict_delta=torch.load(global_model_path, map_location="cpu", weights_only=True)["state_dict"],
+                client_id=result["client_id"],
+                start_version=result["global_model_version"],
+                current_version=current_version
             )
+            logger.info(f"RAM usage after client {client_id} training: {log_memory()} GB")
+        
+        if fedbuff_buffer.is_full():
+            logger.info(f"\n{'='*60}")
+            logger.info(f"Buffer full! Performing staleness-aware aggregation...")
+            
+            # Get all buffered updates
+            buffered_updates = fedbuff_buffer.get_updates()
+            
+            # Log staleness information
+            staleness_values = [u['staleness'] for u in buffered_updates]
+            logger.info(f"Staleness values: {staleness_values}")
+            logger.info(f"Mean staleness: {np.mean(staleness_values):.2f}")
+            logger.info(f"Max staleness: {np.max(staleness_values)}")
 
-            process.start()
-            logger.info(f"Started training process for client {client_id} with PID {process.pid}")
+            # Perform FedBuff aggregation
+            global_model = fedbuff_aggregate(global_model, buffered_updates)
+            current_version += 1 # Increment global model version
+            logger.info(f"Aggregation complete. Updated global model to version {current_version}")
 
-            process.join()
-            logger.info(f"Training process for client {client_id} with PID {process.pid} has completed")
+            fedbuff_buffer.clear()
+            # delte buffers directory
+            to_del_path = os.path.join(final_output_dir, "weight_cache", "fed_buffer")
+            if os.path.exists(to_del_path):
+                shutil.rmtree(to_del_path)
 
+            del buffered_updates
+            gc.collect()
+            torch.cuda.empty_cache()
+            logger.info(f"RAM usage after cleanup the buffers: {log_memory()} GB")
 
-            # Retrieve results
-            if not result_queue.empty():
-                result = result_queue.get()
-                logger.info(f"Received results from client {client_id} training process: {result}")
-
-
-                # # Add update to buffer
-                # fedbuff_buffer.add_update(
-                #     state_dict_delta=delta,
-                #     client_id=client_id,
-                #     start_version=start_version,
-                #     end_version=current_version
-                # )
-                logger.info(f"RAM usage after client {client_id} training: {log_memory()} GB")
+            
             
 if __name__ == '__main__':
     main()

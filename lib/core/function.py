@@ -15,7 +15,7 @@ import random
 import cv2
 import os
 import math
-from torch.cuda import amp
+# from torch.cuda import amp
 from tqdm import tqdm
 
 
@@ -72,7 +72,7 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
             input = input.to(device, non_blocking=True)
             target = [tgt.to(device) for tgt in target]
 
-        with amp.autocast(enabled=device.type != 'cpu'):
+        with torch.autocast(device_type=device.type, enabled=device.type != 'cpu'):
             outputs = model(input)
             total_loss, head_losses = criterion(outputs, target, shapes,model)
 
