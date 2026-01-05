@@ -1,5 +1,5 @@
 import argparse
-import os, sys, gc, shutil
+import os, sys, gc, shutil, time
 import math
 import multiprocessing as mp
 mp.set_start_method('spawn', force=True) # To. ensure CUDA works in subprocesses
@@ -47,6 +47,63 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+def evaluate(global_model, current_version, cfg, data_loaders, final_output_dir, tb_log_dir, writer_dict, logger, device, rank):
+    logger.info(f"Starting evaluation at version {current_version}...")
+    global_model.to(device)
+    criterion = get_loss(cfg, device=device)
+    
+    da_segment_results, ll_segment_results, detect_results, total_loss, maps, times = validate(
+        current_version, cfg, data_loaders["global_model"]["valid"], 
+        data_loaders["global_model"]["valid_dataset"], global_model, criterion,
+        final_output_dir, tb_log_dir, writer_dict, logger, device, rank
+    )
+    
+    # Log metrics
+    msg = 'Version: [{0}]    Loss({loss:.3f})\n' \
+            'Driving area Segment: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
+            'Lane line Segment: Acc({ll_seg_acc:.3f})    IOU ({ll_seg_iou:.3f})  mIOU({ll_seg_miou:.3f})\n' \
+            'Detect: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n'\
+            'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
+                current_version, loss=total_loss, 
+                da_seg_acc=da_segment_results[0], da_seg_iou=da_segment_results[1], da_seg_miou=da_segment_results[2],
+                ll_seg_acc=ll_segment_results[0], ll_seg_iou=ll_segment_results[1], ll_seg_miou=ll_segment_results[2],
+                p=detect_results[0], r=detect_results[1], map50=detect_results[2], map=detect_results[3],
+                t_inf=times[0], t_nms=times[1])
+    logger.info(msg)
+    
+    # Write to TensorBoard
+    # ==================== ADDED: Write validation metrics to TensorBoard ====================
+    writer = writer_dict['writer']
+    global_steps = writer_dict['global_model_version']
+    
+    # Write validation loss
+    writer.add_scalar('global_model/total_loss', total_loss, global_steps)
+    
+    # Write driving area segmentation metrics
+    writer.add_scalar('global_model/da_seg_acc', da_segment_results[0], global_steps)
+    writer.add_scalar('global_model/da_seg_iou', da_segment_results[1], global_steps)
+    writer.add_scalar('global_model/da_seg_miou', da_segment_results[2], global_steps)
+    
+    # Write lane line segmentation metrics
+    writer.add_scalar('global_model/ll_seg_acc', ll_segment_results[0], global_steps)
+    writer.add_scalar('global_model/ll_seg_iou', ll_segment_results[1], global_steps)
+    writer.add_scalar('global_model/ll_seg_miou', ll_segment_results[2], global_steps)
+    
+    # Write detection metrics
+    writer.add_scalar('global_model/detect_precision', detect_results[0], global_steps)
+    writer.add_scalar('global_model/detect_recall', detect_results[1], global_steps)
+    writer.add_scalar('global_model/detect_mAP@0.5', detect_results[2], global_steps)
+    writer.add_scalar('global_model/detect_mAP@0.5:0.95', detect_results[3], global_steps)
+    
+    # Update global steps counter for validation
+    writer_dict['global_model_version'] = current_version
+    # ==================== END OF ADDED CODE ====================
+    
+    global_model.to("cpu")
+    del criterion
+    torch.cuda.empty_cache()
+
+
 def serialize_state_dict(state_dict: dict, save_root: str, global_model_version: str, client_id: str, saved_name: str) -> str:
     """Serialize to bytes - creates a complete copy."""
     state_dict_output_path = os.path.join(save_root, "weight_cache", saved_name)
@@ -78,7 +135,7 @@ def create_data_generator(client_id, rank):
     )
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset) if rank != -1 else None
 
-    train_loader = DataLoaderX(
+    train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
         shuffle=(cfg.TRAIN.SHUFFLE and rank == -1),
@@ -99,7 +156,7 @@ def create_data_generator(client_id, rank):
         client_id=client_id
     )
 
-    valid_loader = DataLoaderX(
+    valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
         batch_size=cfg.TEST.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
         shuffle=False,
@@ -126,83 +183,98 @@ def train_client_model_fedbuff(global_model_path, current_version, cfg, client_i
     Train a client model for local epochs (FedBuff version)
     Returns: (state_dict on CPU, start_version, end_version)
     """
-    logger, final_output_dir, tb_log_dir = create_logger(
-        cfg, cfg.LOG_DIR, 'train', rank=int(os.environ['RANK']) if 'RANK' in os.environ else -1)
-    logger.info(f"=> Training client {client_id} model...")
-    logger.info(f"[INNER]RAM usage before client {client_id} training: {log_memory()} GB")
-    global_rank = int(os.environ['RANK']) if 'RANK' in os.environ else -1
-    rank = global_rank
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    
-    # Record version when client starts training
-    start_version = current_version
-    
-    # Create a COPY of global model for this client
-    global_state = torch.load(global_model_path, map_location=device, weights_only=True)
-    global_state = global_state['state_dict']
-    client_model = get_net(cfg).to(device)
-    client_model.load_state_dict(global_state)
-
-    global_model = get_net(cfg).to("cpu")
-    global_model.load_state_dict(global_state)
-    # client_model.load_state_dict(global_model.state_dict())
-    
-    # Create FRESH optimizer
-    criterion = get_loss(cfg, device=device)
-    optimizer = get_optimizer(cfg, client_model)
-
-    # Learning rate scheduler
-    lf = lambda x: ((1 + math.cos(x * math.pi / cfg.TRAIN.END_EPOCH)) / 2) * \
-                   (1 - cfg.TRAIN.LRF) + cfg.TRAIN.LRF
-    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
-    
-    begin_epoch = cfg.TRAIN.BEGIN_EPOCH
-    logger.info(f"[INNER]RAM usage before#2 client {client_id} training: {log_memory()} GB")
-    # Model configuration
-    client_model.gr = 1.0
-    client_model.nc = 1
-
-    # Training setup
-    data_loader = create_data_generator(client_id, rank) 
-    train_loader = data_loader["train"]
-    num_batch = len(train_loader)
-    num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 0)
-    scaler = torch.amp.GradScaler(enabled=device.type != 'cpu')
-    
-    logger.info(f'=> Client {client_id} starts training from version {start_version}')
-
-    # Train for ALL local epochs
-    for local_epoch in range(begin_epoch + 1, cfg.TRAIN.END_EPOCH + 1):
-        if rank != -1:
-            train_loader.sampler.set_epoch(local_epoch)
-        
-        # Train for one epoch
-        logger.info(f"[INNER]RAM usage before call train function {client_id} training: {log_memory()} GB")
-        train(cfg, train_loader, client_model, criterion, optimizer, scaler,
-              local_epoch, num_batch, num_warmup, None, logger, device, rank, client_id)
-        # train(cfg, train_loader, client_model, criterion, optimizer, scaler,
-        #       local_epoch, num_batch, num_warmup, writer_dict, logger, device, rank, client_id)
+    try:
+        logger, final_output_dir, tb_log_dir = create_logger(
+            cfg, cfg.LOG_DIR, 'train', rank=int(os.environ['RANK']) if 'RANK' in os.environ else -1)
+        logger.info(f"=> Training client {client_id} model...")
+        global_rank = int(os.environ['RANK']) if 'RANK' in os.environ else -1
+        rank = global_rank
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         
-        logger.info(f"[INNER]RAM usage after train function {client_id} training: {log_memory()} GB")
+        # Record version when client starts training
+        start_version = current_version
+        
+        # Create a COPY of global model for this client
+        global_state = torch.load(global_model_path, map_location=device, weights_only=True)
+        global_state = global_state['state_dict']
+        client_model = get_net(cfg).to(device)
+        client_model.load_state_dict(global_state)
 
-    # Training complete - get end version (will be provided by caller)
-    # Move to CPU to save memory
-    client_model.to("cpu")
-    delta = compute_model_delta(global_model.state_dict(), client_model.state_dict())
-    state_dict_path = serialize_state_dict(delta, final_output_dir, current_version, client_id, f"fed_buffer/{client_id}.pt")
+        global_model = get_net(cfg).to("cpu")
+        global_model.load_state_dict(global_state)
+        
+        # Create FRESH optimizer
+        criterion = get_loss(cfg, device=device)
+        optimizer = get_optimizer(cfg, client_model)
 
-    
-    logger.info(f"Client {client_id} training completed")
-    logger.info(f"[INNER]RAM usage after client {client_id} training: {log_memory()} GB")
+        # Learning rate scheduler
+        lf = lambda x: ((1 + math.cos(x * math.pi / cfg.TRAIN.END_EPOCH)) / 2) * \
+                    (1 - cfg.TRAIN.LRF) + cfg.TRAIN.LRF
+        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
+        
+        begin_epoch = cfg.TRAIN.BEGIN_EPOCH
+        # Model configuration
+        client_model.gr = 1.0
+        client_model.nc = 1
 
-    result = {
-            "client_id": client_id,
-            "global_model_version": start_version,
-            "state_dict": state_dict_path
-        }
-    result_queue.put(result)
+        # Training setup
+        data_loader = create_data_generator(client_id, rank) 
+        train_loader = data_loader["train"]
+        num_batch = len(train_loader)
+        num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 0)
+        scaler = torch.amp.GradScaler(enabled=device.type != 'cpu')
+        
+        logger.info(f'=> Client {client_id} starts training from version {start_version}')
+        training_stats = {}
+        # Train for ALL local epochs
+        for local_epoch in range(begin_epoch + 1, cfg.TRAIN.END_EPOCH + 1):
+            if rank != -1:
+                train_loader.sampler.set_epoch(local_epoch)
+            
+            # Train for one epoch
+            metric = train(cfg, train_loader, client_model, criterion, optimizer, scaler,
+                local_epoch, num_batch, num_warmup, None, logger, device, rank, client_id)
+            training_stats[local_epoch] = metric
+
+        # Training complete - get end version (will be provided by caller)
+        # Move to CPU to save memory
+        client_model.to("cpu")
+        delta = compute_model_delta(global_model.state_dict(), client_model.state_dict())
+        state_dict_path = serialize_state_dict(delta, final_output_dir, current_version, client_id, f"fed_buffer/{client_id}.pt")
+
+        result = {
+                "client_id": client_id,
+                "global_model_version": start_version,
+                "state_dict": state_dict_path,
+                "training_stats": training_stats
+            }
+        result_queue.put(result)
+
+    finally:
+        # 1. Delete model and move GPU memory
+        if client_model is not None:
+            del client_model
+        torch.cuda.empty_cache()
+        
+        # 2. Shutdown DataLoader workers explicitly
+        if train_loader is not None:
+            # If using PyTorch's _MultiProcessingDataLoaderIter
+            if hasattr(train_loader, '_iterator') and train_loader._iterator is not None:
+                try:
+                    train_loader._iterator._shutdown_workers()
+                except:
+                    pass
+            del train_loader
+            
+        if data_loader is not None:
+            del data_loader
+        
+        # 3. Force garbage collection
+        gc.collect()
+        
+        # 4. Brief pause for worker cleanup
+        time.sleep(0.1)
 
 
 def main():
@@ -222,21 +294,14 @@ def main():
 
     # Initialize global model on GPU
     global_model = get_net(cfg).to("cpu")
-    logger.info(f"Global model initialized")
-
-    # Generate dataloaders for each client
-    logger.info(f"Creating data loaders for {len(cfg.FED.CLIENT_IDS)} clients...")
-    # data_loaders = {
-    #     client_id: create_data_generator(client_id, rank) 
-    #     for client_id in cfg.FED.CLIENT_IDS
-    # }
-    data_loaders = {}
+    data_loaders = dict()
     # data_loaders["global_model"] = create_data_generator("global_model", rank)
 
     writer_dict = {
         'writer': SummaryWriter(log_dir=tb_log_dir),
         'train_global_steps': 0,
         'valid_global_steps': 0,
+        'global_model_version': 0
     }
 
     # ========== FedBuff Initialization ==========
@@ -252,13 +317,7 @@ def main():
     max_updates = cfg.FED.EPOCHS * len(cfg.FED.CLIENT_IDS)  # Total updates to perform for global model
     client_idx = 0  # Round-robin client selection
     
-    logger.info(f"\n{'='*60}")
-    logger.info(f"Starting FedBuff Training")
-    logger.info(f"Total planned updates: {max_updates}")
-    logger.info(f"Buffer size K: {buffer_size}")
-    logger.info(f"{'='*60}\n")
-
-    for _ in range(max_updates):
+    for fed_round in range(max_updates):
         # Select next client (round-robin or random)
         client_id = cfg.FED.CLIENT_IDS[client_idx % len(cfg.FED.CLIENT_IDS)]
         client_idx += 1
@@ -267,7 +326,6 @@ def main():
         logger.info(f"\n--- Training Client {client_id} (Update {total_updates}/{max_updates}) ---")
         logger.info(f"Current global version: {current_version}")
         logger.info(f"Buffer status: {fedbuff_buffer.get_buffer_size()}/{buffer_size}")
-        logger.info(f"RAM usage before client {client_id} training: {log_memory()} GB")
 
         # For simplicity, select the same global_model for all client.
         global_model_path = serialize_state_dict(global_model.state_dict(), 
@@ -285,8 +343,6 @@ def main():
                 "global_model_path": global_model_path,
                 "current_version": current_version,
                 "cfg": cfg,
-                # "logger": logger,
-                # "writer_dict": writer_dict,
                 "client_id": client_id,
                 "result_queue": result_queue
             }
@@ -297,7 +353,6 @@ def main():
         # Retrieve results
         if not result_queue.empty():
             result = result_queue.get()
-            logger.info(f"Received results from client {client_id} training process: {result}")
 
             # Add update to buffer
             fedbuff_buffer.add_update(
@@ -306,7 +361,13 @@ def main():
                 start_version=result["global_model_version"],
                 current_version=current_version
             )
-            logger.info(f"RAM usage after client {client_id} training: {log_memory()} GB")
+            # Update to TensorBoard
+            for local_epoch, stats in result["training_stats"].items():
+                writer_dict['writer'].add_scalar(
+                    f"clients/{client_id}/{fed_round}/train_loss", 
+                    stats["loss_avg"], 
+                    local_epoch
+                )
         
         if fedbuff_buffer.is_full():
             logger.info(f"\n{'='*60}")
@@ -335,9 +396,11 @@ def main():
             del buffered_updates
             gc.collect()
             torch.cuda.empty_cache()
-            logger.info(f"RAM usage after cleanup the buffers: {log_memory()} GB")
 
-            
+            if current_version % cfg.FED.get('EVAL_FREQUENCY', 2) == 0:
+                evaluate(global_model, current_version, cfg, data_loaders, final_output_dir, tb_log_dir, writer_dict, logger, device, rank)
+                
+        logger.info(f"At fed_round: {fed_round} | {log_memory()} GB")
             
 if __name__ == '__main__':
     main()

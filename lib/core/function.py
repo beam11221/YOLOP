@@ -99,11 +99,6 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
                           speed=input.size(0)/batch_time.val,
                           data_time=data_time, loss=losses)
                 logger.info(msg)
-
-                # writer = writer_dict['writer']
-                # global_steps = writer_dict['valid_global_steps']
-                
-                # writer.add_scalar(f"clients/{client_id}/round_{global_steps}/train_loss", losses.val, epoch)
         
 
         if i > 10:
@@ -114,6 +109,13 @@ def train(cfg, train_loader, model, criterion, optimizer, scaler, epoch, num_bat
     # Cleanup after training loop
     gc.collect()
     torch.cuda.empty_cache()
+
+    return {
+        "epoch": epoch,
+        "loss_avg": losses.avg,
+        "loss_val": losses.val,
+    }
+
 
 def validate(epoch,config, val_loader, val_dataset, model, criterion, output_dir,
              tb_log_dir, writer_dict=None, logger=None, device='cpu', rank=-1):
