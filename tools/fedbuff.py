@@ -295,7 +295,7 @@ def main():
     # Initialize global model on GPU
     global_model = get_net(cfg).to("cpu")
     data_loaders = dict()
-    # data_loaders["global_model"] = create_data_generator("global_model", rank)
+    data_loaders["global_model"] = create_data_generator("global_model", rank)
 
     writer_dict = {
         'writer': SummaryWriter(log_dir=tb_log_dir),
