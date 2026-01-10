@@ -11,11 +11,13 @@ _C.FED.CLIENT_IDS = ['client_0', 'client_1', 'client_2', 'client_3', 'client_4',
                      'client_11', 'client_12', 'client_13', 'client_14'
                      ]
 
+# _C.FED.CLIENT_IDS = ['client_0', 'client_1']
+
 _C.FED.EPOCHS = 50
 
 # FedBuff specific configurations
 _C.FED.BUFFER_SIZE = 15  # K in FedBuff paper
-# _C.FED.BUFFER_SIZE = 1  # K in FedBuff paper
+# _C.FED.BUFFER_SIZE = 2  # K in FedBuff paper
 _C.FED.EVAL_FREQUENCY = 1  # Evaluate every N versions
 _C.FED.STALENESS_ENABLED = True  # Enable staleness weighting
 
@@ -46,14 +48,14 @@ for root_name, subdir in ROOT_SUBDIRS.items():
     setattr(_C.FED, root_name, root_node)
 
 _C.LOG_DIR = 'runs'
-_C.EXP_NAME = '15clients_fedbuff_sync_ver2'
+_C.EXP_NAME = '15clients_fedbuff_sync_ver4'
 
 _C.GPUS = (0,1)     
-_C.WORKERS = 0
-_C.PIN_MEMORY = False
+_C.WORKERS = 16
+_C.PIN_MEMORY = True
 _C.PRINT_FREQ = 20
 _C.AUTO_RESUME =False       # Resume from the last training interrupt
-_C.NEED_AUTOANCHOR = False      # Re-select the prior anchor(k-means)    When training from scratch (epoch=0), set it to be ture!
+_C.NEED_AUTOANCHOR = True      # Re-select the prior anchor(k-means)    When training from scratch (epoch=0), set it to be ture!
 _C.DEBUG = False
 _C.num_seg_class = 2
 

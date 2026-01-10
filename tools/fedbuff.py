@@ -31,7 +31,8 @@ from lib.utils import is_parallel
 from lib.utils.utils import get_optimizer
 from lib.utils.utils import save_checkpoint
 from lib.utils.utils import create_logger, select_device
-from lib.utils import run_anchor
+from lib.utils import run_anchor, kmean_anchors
+
 
 
 def parse_args():
@@ -142,7 +143,9 @@ def create_data_generator(client_id, rank):
         num_workers=cfg.WORKERS,
         sampler=train_sampler,
         pin_memory=cfg.PIN_MEMORY,
-        collate_fn=dataset.AutoDriveDataset.collate_fn
+        collate_fn=dataset.AutoDriveDataset.collate_fn,
+        multiprocessing_context="fork",
+        prefetch_factor=2
     )
 
     valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
@@ -162,10 +165,16 @@ def create_data_generator(client_id, rank):
         shuffle=False,
         num_workers=cfg.WORKERS,
         pin_memory=cfg.PIN_MEMORY,
-        collate_fn=dataset.AutoDriveDataset.collate_fn
+        collate_fn=dataset.AutoDriveDataset.collate_fn,
+        multiprocessing_context="fork",
+        prefetch_factor=2
     )
     
-    return {"train": train_loader, "valid": valid_loader, "valid_dataset": valid_dataset}
+    return {
+        "train": train_loader, 
+        "valid": valid_loader, 
+        "valid_dataset": valid_dataset
+        }
 
 def compute_model_delta(global_state_dict, client_state_dict):
     """Compute delta: client - global (only for floating point params)."""
@@ -191,7 +200,8 @@ def train_client_model_fedbuff(global_model_path, current_version, cfg, client_i
         rank = global_rank
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        
+        data_loader = create_data_generator(client_id, rank) 
+
         # Record version when client starts training
         start_version = current_version
         
@@ -218,8 +228,10 @@ def train_client_model_fedbuff(global_model_path, current_version, cfg, client_i
         client_model.gr = 1.0
         client_model.nc = 1
 
+        det = client_model.model[client_model.detector_index]
+        logger.info(f"Client {client_id} anchors (should match global):\n{det.anchors}")
+
         # Training setup
-        data_loader = create_data_generator(client_id, rank) 
         train_loader = data_loader["train"]
         num_batch = len(train_loader)
         num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 0)
@@ -293,9 +305,25 @@ def main():
     #### End of Pre-task ####
 
     # Initialize global model on GPU
-    global_model = get_net(cfg).to("cpu")
     data_loaders = dict()
     data_loaders["global_model"] = create_data_generator("global_model", rank)
+    global_model = get_net(cfg).to(device)
+
+    #  Model Configuration
+    global_model.gr = 1.0  # gradient ratio for loss scaling
+    global_model.nc = 1    # number of classes (vehicles only in BDD100K)
+    
+    # Anchor Configuration
+    if cfg.NEED_AUTOANCHOR:
+        logger.info("Begin anchor optimization using k-means on training data...")
+        # Use training dataset for anchor computation (more representative)
+        train_dataset_for_anchors = data_loaders["global_model"]["valid_dataset"]
+        run_anchor(logger, train_dataset_for_anchors, model=global_model, 
+                   thr=cfg.TRAIN.ANCHOR_THRESHOLD, imgsz=min(cfg.MODEL.IMAGE_SIZE))
+    else:
+        logger.info("Using default anchors from model config")
+        det = global_model.model[global_model.detector_index]
+        logger.info(f"Current anchors:\n{det.anchors}")
 
     writer_dict = {
         'writer': SummaryWriter(log_dir=tb_log_dir),
@@ -316,6 +344,33 @@ def main():
     # Federated Learning Loop
     max_updates = cfg.FED.EPOCHS * len(cfg.FED.CLIENT_IDS)  # Total updates to perform for global model
     client_idx = 0  # Round-robin client selection
+
+    # TMP
+
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    train_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+        cfg=cfg,
+        is_train=True,
+        inputsize=cfg.MODEL.IMAGE_SIZE,
+        transform=transforms.Compose([transforms.ToTensor(), normalize])
+    )
+    
+    # Get current (default) anchors
+    det = global_model.model[global_model.detector_index]
+    default_anchors = det.anchors.clone()
+    logger.info(f"Default anchors:\n{default_anchors}")
+    
+    # Run k-means to find optimal anchors (this also prints BPR)
+    logger.info("Analyzing anchor fitness...")
+    new_anchors = kmean_anchors(train_dataset, n=9, img_size=min(cfg.MODEL.IMAGE_SIZE), 
+                                thr=cfg.TRAIN.ANCHOR_THRESHOLD, gen=1000, verbose=True)
+    
+    # Compare
+    logger.info(f"Optimized anchors:\n{new_anchors}")
+    logger.info(f"Anchor change:\n{new_anchors - default_anchors.cpu().numpy().reshape(-1, 2)}")
+    
+    # TMP END
+
     
     for fed_round in range(max_updates):
         # Select next client (round-robin or random)
@@ -354,9 +409,10 @@ def main():
         if not result_queue.empty():
             result = result_queue.get()
 
+            client_delta = torch.load(result["state_dict"], map_location="cpu", weights_only=True)["state_dict"]
             # Add update to buffer
             fedbuff_buffer.add_update(
-                state_dict_delta=torch.load(global_model_path, map_location="cpu", weights_only=True)["state_dict"],
+                state_dict_delta=client_delta,
                 client_id=result["client_id"],
                 start_version=result["global_model_version"],
                 current_version=current_version
@@ -397,7 +453,7 @@ def main():
             gc.collect()
             torch.cuda.empty_cache()
 
-            if current_version % cfg.FED.get('EVAL_FREQUENCY', 2) == 0:
+            if (current_version % cfg.FED.get('EVAL_FREQUENCY', 2) == 0) & ("global_model" in data_loaders):
                 evaluate(global_model, current_version, cfg, data_loaders, final_output_dir, tb_log_dir, writer_dict, logger, device, rank)
                 
         logger.info(f"At fed_round: {fed_round} | {log_memory()} GB")

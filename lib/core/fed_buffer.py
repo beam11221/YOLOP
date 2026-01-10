@@ -96,7 +96,7 @@ def fedbuff_aggregate(global_model, buffered_updates, server_lr=1.0):
         
         for update_info, weight in zip(buffered_updates, normalized_weights):
             delta = update_info['state_dict_delta'][key].float()
-            avg_delta[key] += weight * delta
+            avg_delta[key] += (weight * delta)
     
     # Step 2: Apply to global model → w^(t+1) = w^t - η_g · Δ̄
     for key in avg_delta.keys(): # Only iterate over keys we computed (trained)
