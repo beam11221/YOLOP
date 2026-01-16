@@ -13,6 +13,7 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
+import random
 
 from tensorboardX import SummaryWriter
 
@@ -33,6 +34,80 @@ from lib.utils.utils import save_checkpoint
 from lib.utils.utils import create_logger, select_device
 from lib.utils import run_anchor, kmean_anchors
 
+class ClientsNote():
+    def __init__(self, n_clients: int = 15, global_model=None, final_output_dir: str=None):
+        self.n_clients = n_clients
+        self.final_output_dir = final_output_dir
+
+        self.client_models = {
+            f"client_{i}": {
+                "current_global_version": 0
+            } for i in range(n_clients)
+        }
+        self.global_models = {
+            "current_version": 0,
+            "weight_paths": {
+                0: serialize_state_dict(
+                    state_dict=global_model,
+                    save_root=self.final_output_dir,
+                    global_model_version=0,
+                    client_id="global_model",
+                    saved_name=f"global_model/version_0.pt"
+                )
+            }
+        }
+        self.n_updates = 0
+        self.max_updates = n_clients * cfg.FED.EPOCHS
+
+    def append_global_model(self, state_dict: str):
+        new_version = self.global_models["current_version"] + 1
+        self.global_models["current_version"] = new_version
+
+        weight_path = serialize_state_dict(
+                    state_dict=state_dict,
+                    save_root=self.final_output_dir,
+                    global_model_version=new_version,
+                    client_id="global_model",
+                    saved_name=f"global_model/version_{new_version}.pt"
+                )
+        self.global_models["weight_paths"][new_version] = weight_path
+
+    def update_global_model(self, new_version: int, weight_path: str):
+        self.global_models["current_version"] = new_version
+        self.global_models["weight_paths"][new_version] = weight_path
+
+    def get_current_global_model_version(self):
+        return self.global_models["current_version"]
+    
+    def get_global_model_path(self, version: int):
+        if version > self.global_models["current_version"]:
+            raise f"Requested version {version} exceeds current global model version {self.global_models['current_version']}"
+
+        return self.global_models["weight_paths"].get(version, None)
+
+    def get_global_path_for_model(self, client_id: str):
+        client_info = self.client_models.get(client_id, None)
+        if client_info is None:
+            raise f"Client ID {client_id} not found in ClientsNote."
+
+        version = client_info["current_global_version"]
+        return self.get_global_model_path(version)
+    
+    def get_global_version_for_client(self, client_id: str):
+        client_info = self.client_models.get(client_id, None)
+        if client_info is None:
+            raise f"Client ID {client_id} not found in ClientsNote."
+
+        return client_info["current_global_version"]
+
+    def sync_clients(self, client_ids: list):
+        """Update clients' current global model version after aggregation."""
+        current_version = self.get_current_global_model_version()
+        for client_id in client_ids:
+            if client_id in self.client_models:
+                self.client_models[client_id]["current_global_version"] = current_version
+            else:
+                raise f"Client ID {client_id} not found in ClientsNote."
 
 
 def parse_args():
@@ -187,7 +262,7 @@ def compute_model_delta(global_state_dict, client_state_dict):
 
     return delta
 
-def train_client_model_fedbuff(global_model_path, current_version, cfg, client_id,result_queue=None):
+def train_client_model_fedbuff(global_model_path, current_version, cfg, client_id, result_queue=None):
     """
     Train a client model for local epochs (FedBuff version)
     Returns: (state_dict on CPU, start_version, end_version)
@@ -335,41 +410,38 @@ def main():
     # ========== FedBuff Initialization ==========
     buffer_size = cfg.FED.get('BUFFER_SIZE', 10)  # K = 10 based on the paper
     fedbuff_buffer = FedBuffBuffer(buffer_size=buffer_size, device='cpu')
-    current_version = 0  # Track global model version
-    total_updates = 0    # Track total number of client updates
     
     logger.info(f"FedBuff initialized with buffer size K={buffer_size}")
     # ============================================
 
     # Federated Learning Loop
-    max_updates = cfg.FED.EPOCHS * len(cfg.FED.CLIENT_IDS)  # Total updates to perform for global model
-    client_idx = 0  # Round-robin client selection
+    notes = ClientsNote(
+        n_clients=len(cfg.FED.CLIENT_IDS), 
+        global_model=global_model.state_dict(),
+        final_output_dir=final_output_dir
+        )
     
-    for fed_round in range(max_updates):
-        # Select next client (round-robin or random)
-        client_id = cfg.FED.CLIENT_IDS[client_idx % len(cfg.FED.CLIENT_IDS)]
-        client_idx += 1
-        total_updates += 1
-        
-        logger.info(f"\n--- Training Client {client_id} (Update {total_updates}/{max_updates}) ---")
-        logger.info(f"Current global version: {current_version}")
-        logger.info(f"Buffer status: {fedbuff_buffer.get_buffer_size()}/{buffer_size}")
+    selected_clients = []
+    for fed_round in range(notes.max_updates):
+        if not selected_clients:
+            selected_clients = random.sample(cfg.FED.CLIENT_IDS, buffer_size)
+            logger.info(f"Client selection order for this run: {selected_clients}")
 
-        # For simplicity, select the same global_model for all client.
-        global_model_path = serialize_state_dict(global_model.state_dict(), 
-                                                 final_output_dir, 
-                                                 current_version, 
-                                                 client_id, 
-                                                 f"global_model/version_{current_version}.pt"
-                                                 )
+        # Random client selection
+        client_id = selected_clients.pop()
+        notes.n_updates += 1
+        
+        logger.info(f"\n--- Training Client {client_id} (Update {notes.n_updates}/{notes.max_updates}) ---")
+        logger.info(f"Current global version: {notes.get_current_global_model_version()} | clients's last global version: {notes.client_models[client_id]['current_global_version']}")
+        logger.info(f"Buffer status: {fedbuff_buffer.get_buffer_size()}/{buffer_size}")
 
         # Create queue for receiving results
         result_queue = mp.Queue()
         process = mp.Process(
             target=train_client_model_fedbuff,
             kwargs={
-                "global_model_path": global_model_path,
-                "current_version": current_version,
+                "global_model_path": notes.get_global_path_for_model(client_id),
+                "current_version": notes.get_current_global_model_version(),
                 "cfg": cfg,
                 "client_id": client_id,
                 "result_queue": result_queue
@@ -378,7 +450,7 @@ def main():
         process.start()
         process.join()
 
-        # Retrieve results
+        # Retrieve results, if not empty means finished training
         if not result_queue.empty():
             result = result_queue.get()
 
@@ -387,8 +459,8 @@ def main():
             fedbuff_buffer.add_update(
                 state_dict_delta=client_delta,
                 client_id=result["client_id"],
-                start_version=result["global_model_version"],
-                current_version=current_version
+                start_version=notes.get_global_version_for_client(result["client_id"]),
+                current_version=notes.get_current_global_model_version()
             )
             # Update to TensorBoard
             for local_epoch, stats in result["training_stats"].items():
@@ -413,8 +485,13 @@ def main():
 
             # Perform FedBuff aggregation
             global_model = fedbuff_aggregate(global_model, buffered_updates)
-            current_version += 1 # Increment global model version
-            logger.info(f"Aggregation complete. Updated global model to version {current_version}")
+
+            # Append new global model to notes
+            notes.append_global_model(global_model.state_dict())
+            notes.sync_clients(fedbuff_buffer.get_clients_in_buffer())
+            logger.info(f"Aggregation completed. Updated global model to version {notes.get_current_global_model_version()}")
+            logger.info(f"Clients current version: {notes.client_models}")
+
 
             fedbuff_buffer.clear()
             # delte buffers directory
@@ -426,10 +503,10 @@ def main():
             gc.collect()
             torch.cuda.empty_cache()
 
-            if (current_version % cfg.FED.get('EVAL_FREQUENCY', 2) == 0) & ("global_model" in data_loaders):
-                evaluate(global_model, current_version, cfg, data_loaders, final_output_dir, tb_log_dir, writer_dict, logger, device, rank)
-                
+            evaluate(global_model, notes.get_current_global_model_version(), cfg, data_loaders, final_output_dir, tb_log_dir, writer_dict, logger, device, rank)
+            
         logger.info(f"At fed_round: {fed_round} | {log_memory()} GB")
             
 if __name__ == '__main__':
+    random.seed(42)
     main()

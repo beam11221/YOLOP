@@ -49,6 +49,10 @@ class FedBuffBuffer:
         """Get all updates currently in buffer"""
         return list(self.buffer)
     
+    def get_clients_in_buffer(self):
+        """Get list of client IDs currently in buffer"""
+        return list(set(update['client_id'] for update in self.buffer))
+    
     @staticmethod
     def staleness_weight(tau):
         """
