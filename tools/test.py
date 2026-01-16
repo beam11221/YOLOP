@@ -24,6 +24,64 @@ from lib.core.general import fitness
 from lib.models import get_net
 from lib.utils.utils import create_logger, select_device
 
+def create_data_generator(client_id, rank):
+    normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406], 
+        std=[0.229, 0.224, 0.225]
+    )
+    
+    train_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+        cfg=cfg,
+        is_train=True,
+        inputsize=cfg.MODEL.IMAGE_SIZE,
+        transform=transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+        ]),
+        client_id=client_id
+    )
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset) if rank != -1 else None
+
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
+        shuffle=(cfg.TRAIN.SHUFFLE and rank == -1),
+        num_workers=cfg.WORKERS,
+        sampler=train_sampler,
+        pin_memory=cfg.PIN_MEMORY,
+        collate_fn=dataset.AutoDriveDataset.collate_fn,
+        multiprocessing_context="fork",
+        prefetch_factor=2
+    )
+
+    valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+        cfg=cfg,
+        is_train=False,
+        inputsize=cfg.MODEL.IMAGE_SIZE,
+        transform=transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+        ]),
+        client_id=client_id
+    )
+
+    valid_loader = torch.utils.data.DataLoader(
+        valid_dataset,
+        batch_size=cfg.TEST.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
+        shuffle=False,
+        num_workers=cfg.WORKERS,
+        pin_memory=cfg.PIN_MEMORY,
+        collate_fn=dataset.AutoDriveDataset.collate_fn,
+        multiprocessing_context="fork",
+        prefetch_factor=2
+    )
+    
+    return {
+        "train": train_loader, 
+        "valid": valid_loader, 
+        "valid_dataset": valid_dataset
+        }
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Test Multitask network')
 
@@ -37,7 +95,7 @@ def parse_args():
                         type=str,
                         default='runs/')
     parser.add_argument('--weights', nargs='+', type=str, default='/data2/zwt/wd/YOLOP/runs/BddDataset/detect_and_segbranch_whole/epoch-169.pth', help='model.pth path(s)')
-    parser.add_argument('--conf_thres', type=float, default=0.001, help='object confidence threshold')
+    parser.add_argument('--conf_thres', type=float, default=0.5, help='object confidence threshold')
     parser.add_argument('--iou_thres', type=float, default=0.6, help='IOU threshold for NMS')
     args = parser.parse_args()
 
@@ -83,7 +141,7 @@ def main():
     model_dict = model.state_dict()
     checkpoint_file = args.weights
     logger.info("=> loading checkpoint '{}'".format(checkpoint_file))
-    checkpoint = torch.load(checkpoint_file)
+    checkpoint = torch.load(checkpoint_file[0], weights_only=True)
     checkpoint_dict = checkpoint['state_dict']
     # checkpoint_dict = {k: v for k, v in checkpoint['state_dict'].items() if k.split(".")[1] in det_idx_range}
     model_dict.update(checkpoint_dict)
@@ -101,15 +159,15 @@ def main():
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
     )
 
-    valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
-        cfg=cfg,
-        is_train=False,
-        inputsize=cfg.MODEL.IMAGE_SIZE,
-        transform=transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ])
-    )
+    # valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+    #     cfg=cfg,
+    #     is_train=False,
+    #     inputsize=cfg.MODEL.IMAGE_SIZE,
+    #     transform=transforms.Compose([
+    #         transforms.ToTensor(),
+    #         normalize,
+    #     ])
+    # )
 
     # valid_loader = DataLoaderX(
     #     valid_dataset,
@@ -119,14 +177,17 @@ def main():
     #     pin_memory=cfg.PIN_MEMORY,
     #     collate_fn=dataset.AutoDriveDataset.collate_fn
     # )
-    valid_loader = DataLoaderX(
-        valid_dataset,
-        batch_size=cfg.TEST.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
-        shuffle=False,
-        num_workers=cfg.WORKERS,
-        pin_memory=False,
-        collate_fn=dataset.AutoDriveDataset.collate_fn
-    )
+    # valid_loader = DataLoaderX(
+    #     valid_dataset,
+    #     batch_size=cfg.TEST.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
+    #     shuffle=False,
+    #     num_workers=cfg.WORKERS,
+    #     pin_memory=False,
+    #     collate_fn=dataset.AutoDriveDataset.collate_fn
+    # )
+    data_loader = create_data_generator(client_id="global_model", rank=-1)
+    valid_loader = data_loader["valid"]
+    valid_dataset = data_loader["valid_dataset"]
     print('load data finished')
 
     epoch = 0 #special for test

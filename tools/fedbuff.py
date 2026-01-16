@@ -344,33 +344,6 @@ def main():
     # Federated Learning Loop
     max_updates = cfg.FED.EPOCHS * len(cfg.FED.CLIENT_IDS)  # Total updates to perform for global model
     client_idx = 0  # Round-robin client selection
-
-    # TMP
-
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    train_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
-        cfg=cfg,
-        is_train=True,
-        inputsize=cfg.MODEL.IMAGE_SIZE,
-        transform=transforms.Compose([transforms.ToTensor(), normalize])
-    )
-    
-    # Get current (default) anchors
-    det = global_model.model[global_model.detector_index]
-    default_anchors = det.anchors.clone()
-    logger.info(f"Default anchors:\n{default_anchors}")
-    
-    # Run k-means to find optimal anchors (this also prints BPR)
-    logger.info("Analyzing anchor fitness...")
-    new_anchors = kmean_anchors(train_dataset, n=9, img_size=min(cfg.MODEL.IMAGE_SIZE), 
-                                thr=cfg.TRAIN.ANCHOR_THRESHOLD, gen=1000, verbose=True)
-    
-    # Compare
-    logger.info(f"Optimized anchors:\n{new_anchors}")
-    logger.info(f"Anchor change:\n{new_anchors - default_anchors.cpu().numpy().reshape(-1, 2)}")
-    
-    # TMP END
-
     
     for fed_round in range(max_updates):
         # Select next client (round-robin or random)

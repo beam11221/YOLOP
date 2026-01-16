@@ -582,15 +582,37 @@ def get_net(cfg, **kwargs):
 
 if __name__ == "__main__":
     from torch.utils.tensorboard import SummaryWriter
-    model = get_net(False)
-    input_ = torch.randn((1, 3, 256, 256))
-    gt_ = torch.rand((1, 2, 256, 256))
-    metric = SegmentationMetric(2)
-    model_out,SAD_out = model(input_)
-    detects, dring_area_seg, lane_line_seg = model_out
-    Da_fmap, LL_fmap = SAD_out
-    for det in detects:
-        print(det.shape)
-    print(dring_area_seg.shape)
-    print(lane_line_seg.shape)
+    global_model = get_net(False)
+    print("\n" + "="*60)
+    print("ALL STATE_DICT KEYS:")
+    print("="*60)
+    for name, param in global_model.state_dict().items():
+        marker = " <-- ANCHOR" if 'anchor' in name.lower() else ""
+        print(f"{name:50s} | {str(param.shape):25s}{marker}")
+
+    print("\n" + "="*60)
+    print("NAMED BUFFERS (non-trainable, includes anchors):")
+    print("="*60)
+    for name, buf in global_model.named_buffers():
+        print(f"{name:50s} | {str(buf.shape):25s}")
+
+    print("\n" + "="*60)
+    print("DETECT MODULE DETAILS:")
+    print("="*60)
+    det = global_model.model[global_model.detector_index]
+    print(f"Detector index: {global_model.detector_index}")
+    print(f"Anchors shape: {det.anchors.shape}")
+    print(f"Anchors values:\n{det.anchors}")
+    print(f"Anchor grid shape: {det.anchor_grid.shape}")
+    print(f"Stride: {det.stride}")
+    # input_ = torch.randn((1, 3, 256, 256))
+    # gt_ = torch.rand((1, 2, 256, 256))
+    # metric = SegmentationMetric(2)
+    # model_out,SAD_out = model(input_)
+    # detects, dring_area_seg, lane_line_seg = model_out
+    # Da_fmap, LL_fmap = SAD_out
+    # for det in detects:
+    #     print(det.shape)
+    # print(dring_area_seg.shape)
+    # print(lane_line_seg.shape)
  
