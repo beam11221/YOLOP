@@ -566,21 +566,35 @@ def main():
     # print(f"\n✅ Upload completed!")
     # print(f"   Files uploaded: {stats['success_count']}")
     # print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
-    
+
+    #  download_file(self, r2_object_name, local_file_path=None, create_dirs=True):
     # Example 2: Download directory with concurrent downloads
     print("\n" + "="*60)
-    print("CONCURRENT DIRECTORY DOWNLOAD")
+    print("DOWNLOAD SINGLE FILE")
     print("="*60)
     
-    stats = r2.download_directory_concurrent(
-        r2_prefix='ver1/BddDataset_yolop/dataset/',
-        local_directory='/workspace/YOLOP/dataset',
-        show_progress=True
+    stats = r2.download_file(
+        r2_object_name='ver1/BddDataset_yolop/dataset/scripts/spliter.ipynb',
+        local_file_path='/workspace/YOLOP/spliter.ipynb',
     )
     
     print(f"\n✅ Download completed!")
-    print(f"   Files downloaded: {stats['success_count']}")
-    print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
+
+
+    # Example 2: Download directory with concurrent downloads
+    # print("\n" + "="*60)
+    # print("CONCURRENT DIRECTORY DOWNLOAD")
+    # print("="*60)
+    
+    # stats = r2.download_directory_concurrent(
+    #     r2_prefix='ver1/BddDataset_yolop/dataset/',
+    #     local_directory='/workspace/YOLOP/dataset',
+    #     show_progress=True
+    # )
+    
+    # print(f"\n✅ Download completed!")
+    # print(f"   Files downloaded: {stats['success_count']}")
+    # print(f"   Total size: {CloudflareR2Optimized._format_size(stats['total_size'])}")
 
     # Example 3: Delete directory (with dry run first)
     # directory_to_delete = 'ver1/BddDataset_yolop/dataset/processed/'
